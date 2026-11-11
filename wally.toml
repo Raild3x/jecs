@@ -1,6 +1,6 @@
 [package]
 name = "raild3x/jecs"
-version = "0.11.0"
+version = "0.11.0-fork.1"
 registry = "https://github.com/UpliftGames/wally-index"
 realm = "shared"
 license = "MIT"
