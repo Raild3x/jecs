@@ -7,6 +7,7 @@
 
 ### Changed
 - `OnRemove` hooks so that they are allowed to move entity's archetype even during deletion.
+- Debug worlds (`jecs.world(true)`) now error when a hook (`OnAdd`, `OnChange`, `OnRemove`) or a trait (`Exclusive`, `(OnDelete, *)`, `(OnDeleteTarget, *)`) is configured on an id that is already in use, and when a hook is set on an id that already has `world:added`, `world:changed` or `world:removed` listeners for that event. Hooks and traits are read once when an id is first used, so the former was silently ignored and the latter silenced the listeners. Non-debug worlds are unchanged.
 
 ### Fixed
 - `archetype_destroy` no longer keeps references to the destroyed archetype: its `archetype_edges` table, its id in every component record's `cache`, and dead pair records in the relation's `wildcard_pairs` are now removed. Worlds that repeatedly create and reclaim empty archetypes no longer grow unboundedly.

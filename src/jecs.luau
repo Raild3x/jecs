@@ -3887,6 +3887,36 @@ local function world_new(DEBUG: boolean?)
 			end
 		end
 
+		local function DEBUG_IS_LATE_CONFIG(entity: i53, id: i53)
+			local listeners = if id == EcsOnAdd then signals.added
+				elseif id == EcsOnChange then signals.changed
+				elseif id == EcsOnRemove then signals.removed
+				else nil
+			local first = if ECS_IS_PAIR(id) then ECS_PAIR_FIRST(id) else 0
+			-- Exclusive and OnDeleteTarget are only read for pairs, so using
+			-- the id on its own does not count as a use.
+			local pairs_only = id == EcsExclusive or first == EcsOnDeleteTarget
+			if not listeners and not pairs_only and first ~= EcsOnDelete then
+				return
+			end
+
+			if component_index[ECS_PAIR(entity, EcsWildcard)] or (not pairs_only and component_index[entity]) then
+				error([[
+					Hooks and traits are read once, when an id is first used. This
+					id is already in use, so this call would be silently ignored.
+					Configure it before the first use, or use
+					world:added/changed/removed for late listeners.
+				]], 3)
+			end
+			if listeners and listeners[entity] then
+				error([[
+					This id already has signal listeners for this event. Setting
+					a hook now would replace the signal dispatcher and silence
+					them. Use world:added/changed/removed instead.
+				]], 3)
+			end
+		end
+
 		-- NOTE(marcus): I have to save the old function and overriding the
 		-- upvalue in order to actually allow cascaded deletions to also be
 		-- checked by our program because we use the world_delete ptr internally.
@@ -3911,6 +3941,7 @@ local function world_new(DEBUG: boolean?)
 			DEBUG_IS_DELETING_ENTITY(entity)
 			DEBUG_IS_INVALID_ENTITY(entity)
 			DEBUG_ID_IS_INVALID(id)
+			DEBUG_IS_LATE_CONFIG(entity, id)
 
 			world_add(world, entity, id)
 		end
@@ -3918,6 +3949,7 @@ local function world_new(DEBUG: boolean?)
 			DEBUG_IS_DELETING_ENTITY(entity)
 			DEBUG_IS_INVALID_ENTITY(entity)
 			DEBUG_ID_IS_INVALID(id)
+			DEBUG_IS_LATE_CONFIG(entity, id)
 
 			world_set(world, entity, id, value)
 		end

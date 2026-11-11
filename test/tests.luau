@@ -3802,6 +3802,107 @@ TEST("Hooks", function()
 			CHECK(world:get(e, B))
 		end
 	end
+
+	do CASE "debug world should error when a hook is set after the component has been used"
+		local world = jecs.world(true)
+		local A = world:component()
+		local B = world:component()
+		local function hook() end
+
+		-- before the first use is fine
+		world:set(B, jecs.OnAdd, hook)
+		world:set(B, jecs.OnChange, hook)
+		world:set(B, jecs.OnRemove, hook)
+
+		world:set(world:entity(), A, 1)
+		CHECK_EXPECT_ERR(function()
+			world:set(A, jecs.OnAdd, hook)
+		end)
+		CHECK_EXPECT_ERR(function()
+			world:set(A, jecs.OnChange, hook)
+		end)
+		CHECK_EXPECT_ERR(function()
+			world:set(A, jecs.OnRemove, hook)
+		end)
+
+		-- signals can still be connected late
+		local ran = false
+		world:added(A, function()
+			ran = true
+		end)
+		world:set(world:entity(), A, 2)
+		CHECK(ran)
+	end
+
+	do CASE "debug world should error when a hook is set after the component has been used as a relation"
+		local world = jecs.world(true)
+		local A = world:component()
+		world:add(world:entity(), pair(A, world:entity()))
+		CHECK_EXPECT_ERR(function()
+			world:set(A, jecs.OnAdd, function() end)
+		end)
+	end
+
+	do CASE "debug world should error when a trait is added after the relation has been used"
+		local world = jecs.world(true)
+		local R = world:entity()
+		local Early = world:entity()
+		local Plain = world:entity()
+
+		-- before the first use is fine
+		world:add(Early, jecs.Exclusive)
+		world:add(Early, pair(jecs.OnDelete, jecs.Delete))
+		world:add(Early, pair(jecs.OnDeleteTarget, jecs.Delete))
+
+		-- these two are only read for pairs, so using the id on its own does not count
+		world:add(world:entity(), Plain)
+		world:add(Plain, jecs.Exclusive)
+		world:add(Plain, pair(jecs.OnDeleteTarget, jecs.Delete))
+
+		world:add(world:entity(), pair(R, world:entity()))
+		CHECK_EXPECT_ERR(function()
+			world:add(R, jecs.Exclusive)
+		end)
+		CHECK_EXPECT_ERR(function()
+			world:add(R, pair(jecs.OnDelete, jecs.Delete))
+		end)
+		CHECK_EXPECT_ERR(function()
+			world:add(R, pair(jecs.OnDeleteTarget, jecs.Delete))
+		end)
+	end
+
+	do CASE "debug world should error when OnDelete is added after the id has been used"
+		local world = jecs.world(true)
+		local A = world:entity()
+		world:add(world:entity(), A)
+		CHECK_EXPECT_ERR(function()
+			world:add(A, pair(jecs.OnDelete, jecs.Delete))
+		end)
+	end
+
+	do CASE "debug world should error when a hook would replace the dispatcher of a signal"
+		local world = jecs.world(true)
+		local A = world:component()
+		local function hook() end
+
+		world:removed(A, function() end)
+		-- a different event does not touch the removed signal
+		world:set(A, jecs.OnAdd, hook)
+		CHECK_EXPECT_ERR(function()
+			world:set(A, jecs.OnRemove, hook)
+		end)
+
+		world:changed(A, function() end)
+		CHECK_EXPECT_ERR(function()
+			world:set(A, jecs.OnChange, hook)
+		end)
+
+		local B = world:component()
+		world:added(B, function() end)
+		CHECK_EXPECT_ERR(function()
+			world:set(B, jecs.OnAdd, hook)
+		end)
+	end
 end)
 
 TEST("change tracking", function()

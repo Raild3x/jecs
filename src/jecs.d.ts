@@ -178,6 +178,8 @@ export class World {
 
 	/**
 	 * Installs a hook on the given component.
+	 * Hooks are read once, when the component is first used, so install them before that.
+	 * A debug world (`world(true)`) errors when a hook is installed too late.
 	 * @param component The target component.
 	 * @param hook The hook to install.
 	 * @param value The hook callback.
