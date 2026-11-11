@@ -1238,8 +1238,20 @@ local function archetype_destroy(world: world, archetype: archetype)
 	local component_index = world.component_index
 	local archetype_edges = world.archetype_edges
 	local edges = archetype_edges[archetype.id]
+	local types = archetype.types
 	for id, node in edges do
-		archetype_edges[node.id][id] = nil
+		local node_edges = archetype_edges[node.id]
+		if node_edges[id] == archetype then
+			node_edges[id] = nil
+		else
+			-- An edge of an exclusive add: `node` has `id` in place of another
+			-- pair of this archetype, and that pair is its way back.
+			local idr = component_index[id]
+			local replaced = if idr then types[idr.records[node.id]] else nil
+			if node_edges[replaced] == archetype then
+				node_edges[replaced] = nil
+			end
+		end
 		edges[id] = nil
 	end
 
@@ -2920,9 +2932,13 @@ local function world_new(DEBUG: boolean?)
 		local to = edge[id]
 		if not to then
 			local dst = table.clone(archetype.types)
+			local replaced = dst[cr]
 			dst[cr] = id
 			to = archetype_ensure(world, dst)
 			edge[id] = to
+			-- The way back replaces `id` with the pair that it replaced. It is
+			-- also what lets archetype_destroy find and remove this edge.
+			archetype_edges[to.id][replaced] = archetype
 		end
 		return to
 	end

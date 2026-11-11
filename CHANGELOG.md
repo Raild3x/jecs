@@ -20,6 +20,7 @@
 - `world:set`, `world:add` and `bulk_insert` on an entity whose last component had been removed now take it out of the root archetype. Previously a stale entry stayed behind, and deleting another empty entity then made `world:get` return a different entity's data and queries yield dead entities.
 - `world:delete` of a pair target no longer strips unrelated components from surviving entities. Pairs collected for removal from an archetype that turned out to be cascade deleted were carried over to the next archetype, where each one that was not found removed the archetype's last component instead.
 - `world:delete` of a component or relation with `(OnDelete, Delete)` now deletes every entity that has it. Previously the component record's archetypes were traversed once while the cascade could create new archetypes holding the id, and the entities in the ones the traversal skipped survived with the deleted id still attached.
+- Adding a pair of an exclusive relation (for example re-parenting with `ChildOf`) can no longer move an entity into a destroyed archetype. The archetype edge cached by an exclusive add had no way back, so `archetype_destroy` neither removed it when its destination was destroyed nor left the destination's own edges alone when its source was, and the stale edge was followed once the target's id was recycled. It could also make `archetype_destroy` error with `attempt to index nil with number`.
 
 ## 0.8.0
 
