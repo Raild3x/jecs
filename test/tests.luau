@@ -2480,6 +2480,208 @@ TEST("signals on a pair id", function()
 	end
 end)
 
+TEST("world.deferred", function()
+	do CASE "should hold queued changes back until apply and then apply them in order"
+		local world = jecs.world()
+		local A = world:component() :: Id<number>
+		local B = world:component() :: Id<boolean>
+		local T = world:entity()
+		local e, x = world:entity(), world:entity()
+		world:add(e, B)
+
+		local d = world.deferred
+		d:set(e, A, 1)
+		d:set(e, A, 2)
+		d:set(e, B, false)
+		d:add(e, T)
+		d:remove(e, T)
+		d:add(x, T)
+		d:delete(x)
+		d:set(x, A, 9)
+		d:delete(x)
+
+		CHECK(not world:has(e, A))
+		CHECK(world:get(e, B) == nil)
+		CHECK(world:contains(x))
+
+		d:apply()
+
+		CHECK(world:get(e, A) == 2)
+		CHECK(world:get(e, B) == false)
+		CHECK(not world:has(e, T))
+		CHECK(not world:contains(x))
+
+		-- nothing is left to apply a second time
+		world:remove(e, A)
+		d:apply()
+		CHECK(not world:has(e, A))
+	end
+
+	do CASE "should skip a queued change whose entity is dead when it is applied"
+		local world = jecs.world()
+		local A = world:component() :: Id<number>
+		local d = world.deferred
+
+		local victim = world:entity()
+		d:set(victim, A, 5)
+		world:delete(victim)
+		local newcomer = world:entity()
+		CHECK(ECS_ID(newcomer) == ECS_ID(victim))
+
+		d:apply()
+		CHECK(not world:has(newcomer, A))
+	end
+
+	do CASE "should apply a change queued by a listener before the next queued change"
+		local world = jecs.world()
+		local Health = world:component() :: Id<number>
+		local Log = world:component() :: Id<string>
+		local Dead = world:entity()
+		local d = world.deferred
+
+		local order = {}
+		world:removed(Health, function(entity)
+			d:add(entity, Dead)
+		end)
+		world:added(Dead, function()
+			table.insert(order, "Dead")
+		end)
+		world:added(Log, function()
+			table.insert(order, "Log")
+		end)
+
+		local e = world:entity()
+		world:set(e, Health, 0)
+		d:remove(e, Health)
+		d:set(e, Log, "x")
+		d:apply()
+
+		CHECK(#order == 2)
+		CHECK(order[1] == "Dead")
+		CHECK(order[2] == "Log")
+	end
+
+	do CASE "should raise an error from apply, drop the change that failed and keep the rest queued"
+		local world = jecs.world()
+		local A = world:component() :: Id<number>
+		local Bad = world:component() :: Id<number>
+		local C = world:component() :: Id<number>
+		local D = world:component() :: Id<number>
+		local d = world.deferred
+
+		local e = world:entity()
+		local raise = true
+		local bad_calls = 0
+		local order = {}
+		world:added(Bad, function(entity)
+			bad_calls += 1
+			d:set(entity, D, 4)
+			if raise then
+				error("listener failed")
+			end
+		end)
+		world:added(C, function()
+			table.insert(order, "C")
+		end)
+		world:added(D, function()
+			table.insert(order, "D")
+		end)
+
+		d:set(e, A, 1)
+		d:set(e, Bad, 2)
+		d:set(e, C, 3)
+
+		local ok, err = pcall(d.apply, d)
+		CHECK(not ok)
+		CHECK(string.find(tostring(err), "listener failed", 1, true) ~= nil)
+		CHECK(world:get(e, A) == 1)
+		CHECK(not world:has(e, C))
+		CHECK(not world:has(e, D))
+
+		raise = false
+		d:apply()
+		CHECK(bad_calls == 1)
+		CHECK(world:get(e, C) == 3)
+		CHECK(world:get(e, D) == 4)
+		-- what the listener queued still runs before the change that followed its trigger
+		CHECK(order[1] == "D")
+		CHECK(order[2] == "C")
+	end
+
+	do CASE "should raise instead of hanging when a listener queues the change that invokes it"
+		local world = jecs.world()
+		local A = world:component() :: Id<number>
+		local d = world.deferred
+
+		local fired = 0
+		world:changed(A, function(entity)
+			fired += 1
+			d:set(entity, A, fired)
+		end)
+		local e = world:entity()
+		world:set(e, A, 0)
+		d:set(e, A, 1)
+
+		CHECK(not pcall(d.apply, d))
+		CHECK(fired > 1)
+	end
+
+	do CASE "should let a query loop queue the delete of entities it iterates"
+		local world = jecs.world()
+		local Health = world:component() :: Id<number>
+		local Follows = world:entity()
+		local d = world.deferred
+
+		local leader = world:entity()
+		world:set(leader, Health, 0)
+		local f1, f2, other = world:entity(), world:entity(), world:entity()
+		world:set(f1, Health, 10)
+		world:add(f1, pair(Follows, leader))
+		world:set(f2, Health, 10)
+		world:add(f2, pair(Follows, leader))
+		world:set(other, Health, 10)
+
+		local visited = 0
+		for entity, health in world:query(Health) do
+			visited += 1
+			if health <= 0 then
+				d:delete(entity)
+			end
+		end
+		d:apply()
+
+		CHECK(visited == 4)
+		CHECK(not world:contains(leader))
+		CHECK(world:contains(f1))
+		CHECK(not world:has(f1, pair(Follows, __)))
+	end
+
+	do CASE "jecs.deferred should make a queue that is separate from world.deferred"
+		local world = jecs.world()
+		local A = world:component() :: Id<string>
+		local mine = jecs.deferred(world)
+		CHECK(mine ~= world.deferred)
+
+		local e = world:entity()
+		world.deferred:set(e, A, "shared")
+		mine:set(e, A, "mine")
+
+		mine:apply()
+		CHECK(world:get(e, A) == "mine")
+		world.deferred:apply()
+		CHECK(world:get(e, A) == "shared")
+	end
+
+	do CASE "should run the checks of a debug world when it applies"
+		local world = jecs.world(true)
+		local Tag = world:entity()
+		local e = world:entity()
+
+		world.deferred:set(e, Tag, 1)
+		CHECK(not pcall(world.deferred.apply, world.deferred))
+	end
+end)
+
 -- FOCUS()
 TEST("world:range()", function()
 

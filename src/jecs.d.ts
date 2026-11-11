@@ -296,9 +296,36 @@ export class World {
 	added<T>(component: Id<T>, listener: (e: Entity, id: Id<T>, value: T) => void): () => void;
 	changed<T>(component: Id<T>, listener: (e: Entity, id: Id<T>, value: T) => void): () => void;
 	removed<T>(component: Id<T>, listener: (e: Entity, id: Id<T>, deleted?: true) => void): () => void;
+
+	/**
+	 * The queue of deferred changes that every world is created with. Queue structural changes
+	 * here from a query loop, a hook or a listener, and call `apply` once it is safe to make them.
+	 */
+	readonly deferred: Deferred;
+}
+
+/**
+ * A queue of changes to a world that are held back until `apply`, the equivalent of a FLECS
+ * stage and its merge. Changes apply in the order they were queued, and a change whose entity
+ * is no longer alive by then is skipped.
+ */
+export interface Deferred {
+	add(entity: Entity, id: Id): void;
+	set<T>(entity: Entity, id: Id<T>, value: T): void;
+	remove(entity: Entity, id: Id): void;
+	delete(entity: Entity): void;
+	/**
+	 * Applies the queued changes and empties the queue. A change that a listener queues while
+	 * another is applied runs before the next one. An error reaches the caller: the change that
+	 * raised is dropped and the ones that have not run stay queued.
+	 */
+	apply(): void;
 }
 
 export function world(DEBUG?: boolean): World;
+
+/** Creates a queue of deferred changes that is separate from `world.deferred`. */
+export function deferred(world: World): Deferred;
 
 export function component<T>(): Entity<T>;
 

@@ -213,6 +213,36 @@ type world = {
 	added: (world, i53, (e: i53, id: i53, value: any?) -> ()) -> () -> (),
 	changed: (world, i53, (e: i53, id: i53, value: any?) -> ()) -> () -> (),
 	removed: (world, i53, (e: i53, id: i53, delete: boolean?) -> ()) -> () -> (),
+
+	deferred: deferred,
+}
+
+type deferred = {
+	add: (self: deferred, entity: i53, id: i53) -> (),
+	set: (self: deferred, entity: i53, id: i53, value: any) -> (),
+	remove: (self: deferred, entity: i53, id: i53) -> (),
+	delete: (self: deferred, entity: i53) -> (),
+	apply: (self: deferred) -> (),
+}
+
+--- A queue of changes to a world that are held back until `apply`.
+--- Changes apply in the order they were queued, and a change whose entity is
+--- no longer alive by then is skipped. It is the equivalent of a FLECS stage
+--- and its merge.
+export type Deferred = {
+	--- Queues `world:add`
+	add: <T, a>(self: Deferred, entity: Entity<T>, id: Id<a>) -> (),
+	--- Queues `world:set`
+	set: <T, a>(self: Deferred, entity: Entity<T>, id: Id<a>, value: a) -> (),
+	--- Queues `world:remove`
+	remove: <T, a>(self: Deferred, entity: Entity<T>, id: Id<a>) -> (),
+	--- Queues `world:delete`
+	delete: <T>(self: Deferred, entity: Entity<T>) -> (),
+	--- Applies the queued changes and empties the queue. A change that a
+	--- listener queues while another is applied runs before the next one.
+	--- An error reaches the caller: the change that raised is dropped and the
+	--- ones that have not run stay queued.
+	apply: (self: Deferred) -> (),
 }
 
 export type World = {
@@ -231,6 +261,11 @@ export type World = {
 	added: <T>(World, Component<T>, (e: Entity, id: Id<T>, value: T, oldarchetype: Archetype) -> ()) -> () -> (),
 	removed: <T>(World, Component<T>, (e: Entity, id: Id<T>, delete: boolean?) -> ()) -> () -> (),
 	changed: <T>(World, Component<T>, (e: Entity, id: Id<T>, value: T, oldarchetype: Archetype) -> ()) -> () -> (),
+
+	--- The queue of deferred changes that every world is created with.
+	--- Queue structural changes here from a query loop, a hook or a listener,
+	--- and call `world.deferred:apply()` once it is safe to make them.
+	deferred: Deferred,
 
 	--- Enforce a check on entities to be created within desired range
 	range: (self: World, range_begin: number, range_end: number?) -> (),
@@ -2778,6 +2813,94 @@ local function ecs_bulk_remove(world: world, entity: i53, ids: { i53 })
 	end
 end
 
+local DEFERRED_ADD = 1
+local DEFERRED_SET = 2
+local DEFERRED_REMOVE = 3
+local DEFERRED_DELETE = 4
+
+-- A queue of changes to a world that are held back until `apply`, the
+-- equivalent of a FLECS stage and its merge. `world.deferred` is the queue
+-- every world is created with, and `jecs.deferred(world)` makes a separate one.
+local function deferred_new(world: world): deferred
+	local contains, add, set, remove, delete =
+		world.contains, world.add, world.set, world.remove, world.delete
+
+	-- Four slots per change: kind, entity, id and value. A slot that is unused
+	-- holds false, because nil would leave holes that move the array into the
+	-- hash part of the table.
+	local ops = {} :: { any }
+	local n = 0
+	local spare = nil :: { any }?
+
+	local function push(kind: number, entity: i53, id: any, value: any)
+		ops[n + 1] = kind
+		ops[n + 2] = entity
+		ops[n + 3] = id
+		ops[n + 4] = value
+		n += 4
+	end
+
+	local function apply()
+		if n == 0 then
+			return
+		end
+		local batch, count = ops, n
+		ops = spare or {}
+		spare = nil
+		n = 0
+
+		local i = 1
+		local ok, err = pcall(function()
+			while i <= count do
+				local kind, entity = batch[i], batch[i + 1]
+				i += 4
+				-- The entity may have been deleted since the change was queued
+				if contains(world, entity) then
+					if kind == DEFERRED_ADD then
+						add(world, entity, batch[i - 2])
+					elseif kind == DEFERRED_SET then
+						set(world, entity, batch[i - 2], batch[i - 1])
+					elseif kind == DEFERRED_REMOVE then
+						remove(world, entity, batch[i - 2])
+					else
+						delete(world, entity)
+					end
+				end
+				-- Changes that a listener queued while this one was applied
+				-- run before the next one
+				if n > 0 then
+					apply()
+				end
+			end
+		end)
+		if not ok then
+			-- The change that failed is dropped. The ones that have not run
+			-- stay queued, behind what listeners queued in the meantime.
+			table.move(batch, i, count, n + 1, ops)
+			n += count - i + 1
+			error(err, 0)
+		end
+		table.clear(batch)
+		spare = batch
+	end
+
+	return {
+		add = function(_, entity: i53, id: i53)
+			push(DEFERRED_ADD, entity, id, false)
+		end,
+		set = function(_, entity: i53, id: i53, value: any)
+			push(DEFERRED_SET, entity, id, value)
+		end,
+		remove = function(_, entity: i53, id: i53)
+			push(DEFERRED_REMOVE, entity, id, false)
+		end,
+		delete = function(_, entity: i53)
+			push(DEFERRED_DELETE, entity, false, false)
+		end,
+		apply = apply,
+	}
+end
+
 local function world_new(DEBUG: boolean?)
 	local eindex_dense_array = {} :: { i53 }
 	local eindex_sparse_array = {} :: { record }
@@ -4074,6 +4197,9 @@ local function world_new(DEBUG: boolean?)
 		world.set = world_set_checked
 	end
 
+	-- Created after the debug wrappers so that it applies through them
+	world.deferred = deferred_new(world)
+
 	for i = 1, EcsRest do
 		ENTITY_INDEX_NEW_ID(world)
 	end
@@ -4239,6 +4365,8 @@ return {
 	World = {
 		new = world_new
 	},
+	--- Create a queue of deferred changes that is separate from `world.deferred`
+	deferred = (deferred_new :: any) :: (World) -> Deferred,
 	--- Create a preregistered ID (see more how_to/011_preregistering_components.luau)
 	component = (ECS_COMPONENT :: any) :: <T>() -> Entity<T>,
 	tag = (ECS_TAG :: any) :: () -> Entity<nil>,
