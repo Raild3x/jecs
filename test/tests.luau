@@ -586,6 +586,37 @@ TEST("bulk", function()
 		CHECK(world:get(e, c2) == 2)
 		CHECK(world:get(e, c3) == 3)
 	end
+
+	do CASE "#331 OnChange should see the new values when bulk_insert does not move the entity"
+		local world = jecs.world()
+		local c1, c2, c3 = world:component(), world:component(), world:component()
+
+		local seen_c1, seen_c2
+		world:set(c1, jecs.OnChange, function(e, id, value)
+			seen_c1 = world:get(e, c1)
+			seen_c2 = world:get(e, c2)
+		end)
+
+		local e = world:entity()
+		world:set(e, c1, 1)
+		world:set(e, c2, "a")
+
+		-- No archetype move
+		jecs.bulk_insert(world, e, { c1, c2 }, { 2, "b" })
+		CHECK(seen_c1 == 2)
+		CHECK(seen_c2 == "b")
+		CHECK(world:get(e, c1) == 2)
+		CHECK(world:get(e, c2) == "b")
+
+		-- Same as when the batch moves the entity
+		jecs.bulk_insert(world, e, { c1, c2, c3 }, { 3, "c", true })
+		CHECK(seen_c1 == 3)
+		CHECK(seen_c2 == "c")
+
+		-- and as world:set
+		world:set(e, c1, 4)
+		CHECK(seen_c1 == 4)
+	end
 end)
 
 TEST("repro", function()
