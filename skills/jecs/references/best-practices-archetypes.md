@@ -49,6 +49,7 @@ Ratios from lune and from Roblox Studio (JECS native). Two figures = the two env
 |---|---|
 | Observing a `set`, vs none | hook 1.3-1.9x; 1 signal listener 1.8-2.1x; 3 listeners 2.5-2.6x |
 | Debug world | component `set` about 3.7x; pair `set` about 9x; tag add + remove 1.6x (lune) |
+| Uncached vs cached query, iterated once per call (lune) | 1.0x with 10,000 entities in 1 archetype; 1.3x in 1,000 archetypes; 2.6x for 100 entities in 100 archetypes; 4x for 10 entities among 1,000 |
 | Switching state, vs `set` of a value | exclusive pair 4-5x (entity with 2 other components), 7-13x (10), 22-38x (30). Remove tag + add tag: 8-10x, 14-22x, 46-50x |
 | Selecting one state among 10,000, vs a tag or pair filter | value + `if`: 4x when 25% match, about 100x when 1% match |
 | Despawn, vs collect-then-delete | marker tag + cleanup query 1.2-2x; in-loop delete no faster |

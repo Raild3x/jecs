@@ -4,7 +4,7 @@
 
 | Situation | Use | Because |
 |---|---|---|
-| Per-frame work over many entities | Cached query at module scope | The match list is kept up to date instead of rebuilt each call |
+| Per-frame work over many entities | Cached query at module scope | An uncached query matches archetypes again on every call: no measurable cost with one archetype, 1.3x at 1,000, and 2.6-4x when few entities are spread over many |
 | One-off or rarely run lookup, or terms only known at run time | Uncached query, iterated where it is built | Cheap to make; a cached one would install observers that stay until `:fini()` |
 | One entity you already hold | `world:get` / `world:has` | No scan at all |
 
@@ -31,7 +31,7 @@ end
 | `:cached()` | Reusable; tracks new archetypes. Call after `:with` / `:without` |
 | `query:has(e)` | Does `e` match now |
 | `query:archetypes()` | Matching archetypes, empty ones included. Each has `entities`, `columns_map[id]` |
-| `cached:fini()` | Releases a cached query |
+| `cached:fini()` | Releases a cached query. A cached query belongs to the world that made it: tests that build a fresh world build its queries too |
 | `world:each(id)` | Entities with one id |
 | `world:children(parent)` | Entities with `pair(jecs.ChildOf, parent)` |
 

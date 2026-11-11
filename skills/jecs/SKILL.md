@@ -24,8 +24,10 @@ Written for the fork `raild3x/jecs`. Not covered: roblox-ts, replication, schedu
 |---|---|---|
 | Data | `jecs.component<<T>>()` + `world:set` | |
 | Yes/no fact | `jecs.tag()` + `world:add` | Queries select on presence |
+| Query a system runs every frame | `world:query(...):cached()`, once, at module scope | An uncached query matches archetypes again on every call: no measurable cost with one archetype, 1.3x at 1,000, and 2.6-4x when few entities are spread over many |
+| Query with a term only known at call time (`pair(InZone, zone)`) | Uncached, iterated where it is built | A cached one per call leaks observers |
 | Holder belongs to, is part of, or is grouped by another entity | Pair + cleanup trait | Reverse lookup and cascade come free |
-| Holder merely points at another entity (AI target, last attacker) | Entity in a data component | Read per row and retargeted without moving the entity |
+| Holder merely points at another entity (AI target, last attacker) | Entity in a data component; the system that reads it removes it once `world:contains` fails | Read per row and retargeted without moving the entity. Nothing else clears it when the target dies |
 | One-of-several state that systems select by, rarely changed | Exclusive pair | The query skips non-matching entities |
 | One-of-several state read in a loop over everyone, or changed often | Value component | A pair switch costs 4-38x a `set` |
 | Derived value (speed from velocity) | Compute it | A stored copy goes stale |

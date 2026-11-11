@@ -215,6 +215,23 @@ Arm means: no skill 56%, skill before 69%, skill after 73%.
 
 The first row is a guard the skill asks for (`world:contains` before a write) written so that it hides the failure. The skill now says to decide what a dead handle means. Not re-tested in this table.
 
+Re-test after the corrections, same day: six more Sonnet runs on the skill, not graded blind. Hidden checks and the grader's probe script (`probe.luau`, not shipped) were run on each; the columns are the defects from the table above.
+
+| Skill version | Run | Hidden checks | Dead target clears | Stale zone guarded | Stale target dropped | Per-frame queries cached | Tokens | Time | Tool calls |
+|---|---|---|---|---|---|---|---|---|---|
+| After the first nine | 3, 6, 9 | 23, 23, 23 | 2 of 3 | 1 of 3 | 2 of 3 | 2 of 3 | 69,046 mean | 48 s | 11 |
+| + "decide what a dead handle means", second-review corrections | 10 | 23/23 | yes | yes | no | none | 68,786 | 53 s | 11 |
+| | 11 | 23/23 | yes | yes | no | none | 66,832 | 37 s | 12 |
+| | 12 | 23/23 | yes | yes | no | none | 73,998 | 52 s | 9 |
+| + caching and the stale-link drop in SKILL.md's quick reference | 13 | 23/23 | yes | yes | yes | all | 74,168 | 52 s | 17 |
+| | 14 | 23/23 | yes | yes | no | all | 68,112 | 56 s | 7 |
+| | 15 | 23/23 | yes | yes | yes | all but the starting file's | 70,555 | 55 s | 15 |
+
+- Runs 10 to 12 fixed the dead-handle guard and lost query caching in all three. The second-review correction had hedged module-scope cached queries with a note about several worlds; with the hedge removed and the rule in the quick reference, all three of the next runs cached.
+- What reaches every run is SKILL.md. A rule that lives only in a reference file was followed by some runs and not others; the same rule as a quick-reference row was followed by all three.
+- Measured while fixing this: an uncached query costs nothing extra with one archetype, 1.3x at 1,000, and 2.6 to 4x when few entities are spread over many. The skill's reason for caching now says that.
+- Run 15 queries `Health` without `Npc` for deaths, as run 8 did. Left as is: the ticket says "every NPC", and no rule would have caught it.
+
 Second adversarial review, same day: 227,464 tokens, 12 minutes, 40 tool calls. One critical, eight major and eleven minor findings; all reproduced.
 
 | Severity | Finding | Now |
