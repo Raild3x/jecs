@@ -3644,6 +3644,9 @@ local function world_new(DEBUG: boolean?)
 						world_delete(world, entities[row])
 					end
 					archetype_destroy(world, idr_t_archetype)
+					-- Pairs collected before the delete policy was found must
+					-- not leak into the next archetype.
+					table.clear(to_remove)
 					continue
 				end
 				if remove_count == 1 then

@@ -18,6 +18,7 @@
 - `query:iter()` on a stored uncached query now matches archetypes again on every call. Previously it restarted from the archetype list captured by the first iteration and missed archetypes created since.
 - A `world:added`, `world:changed` or `world:removed` listener that disconnects during dispatch no longer causes another listener to be skipped for that event, and disconnecting a listener no longer changes the order of the remaining ones.
 - `world:set`, `world:add` and `bulk_insert` on an entity whose last component had been removed now take it out of the root archetype. Previously a stale entry stayed behind, and deleting another empty entity then made `world:get` return a different entity's data and queries yield dead entities.
+- `world:delete` of a pair target no longer strips unrelated components from surviving entities. Pairs collected for removal from an archetype that turned out to be cascade deleted were carried over to the next archetype, where each one that was not found removed the archetype's last component instead.
 
 ## 0.8.0
 

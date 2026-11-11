@@ -1629,6 +1629,45 @@ TEST("world:delete()", function()
 			CHECK(world:get(e3, A) == "e3-data")
 		end
 	end
+
+	do CASE "#321 deleting a target should not strip unrelated components after an archetype was cascade deleted"
+		local world = jecs.world()
+		local Comp = world:component()
+
+		local R_nd = world:entity()
+		local R_del = world:entity()
+		world:add(R_del, pair(jecs.OnDeleteTarget, jecs.Delete))
+		local R3 = world:entity()
+		local R4 = world:entity()
+
+		local T = world:entity()
+
+		-- Create the archetype of pair(R_nd, T) first so that it is not visited
+		-- between the two archetypes below
+		local warm = world:entity()
+		world:add(warm, pair(R_nd, T))
+		world:remove(warm, pair(R_nd, T))
+
+		local victim = world:entity()
+		world:set(victim, Comp, "important data")
+		world:add(victim, pair(R3, T))
+		world:add(victim, pair(R4, T))
+
+		-- Visited before the victim: pair(R_nd, T) is collected for removal
+		-- before pair(R_del, T) turns it into a delete
+		local leaker = world:entity()
+		world:add(leaker, pair(R_nd, T))
+		world:add(leaker, pair(R_del, T))
+
+		world:delete(T)
+
+		CHECK(not world:contains(leaker))
+		CHECK(world:contains(victim))
+		CHECK(world:has(victim, Comp))
+		CHECK(world:get(victim, Comp) == "important data")
+		CHECK(not world:has(victim, pair(R3, T)))
+		CHECK(not world:has(victim, pair(R4, T)))
+	end
 end)
 
 TEST("world:each()", function()
