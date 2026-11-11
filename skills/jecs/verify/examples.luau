@@ -1,0 +1,244 @@
+--!strict
+-- Runs the patterns the skill teaches, end to end.
+-- Copy the project's jecs.luau next to this file, then: lune run examples.luau
+local jecs = require("./jecs")
+local pair = jecs.pair
+
+local FORK = (jecs :: any).deferred ~= nil
+
+local passed, failed = 0, 0
+local function check(pattern: string, holds: any)
+	if holds then
+		passed += 1
+	else
+		failed += 1
+		print("FAIL  " .. pattern)
+	end
+end
+
+-- components module: ids, then names, traits and hooks, then the world ----------
+type Hit = { target: jecs.Entity, amount: number }
+
+local Health = jecs.component<<number>>()
+local MoveState = jecs.component<<"idle" | "walking" | "attacking">>()
+local Target = jecs.component<<jecs.Entity>>()
+local Model = jecs.component<<{ destroyed: boolean }>>()
+local Dead = jecs.tag()
+local Stunned = jecs.tag()
+local OwnedBy = jecs.tag()
+local Team = jecs.tag()
+local Red, Blue = jecs.tag(), jecs.tag()
+
+jecs.meta(Health, jecs.Name, "Health")
+jecs.meta(OwnedBy, pair(jecs.OnDeleteTarget, jecs.Delete))
+jecs.meta(Team, jecs.Exclusive)
+-- a hook that needs the world closes over a variable that is assigned below
+local world: jecs.World
+jecs.meta(Model, jecs.OnRemove, function(entity, id)
+	-- the value is still readable here; no structural change, nothing that can raise
+	local model = world:get(entity, id)
+	if model then
+		model.destroyed = true
+	end
+end)
+
+world = jecs.world(true) -- debug world: for development only
+
+-- queries: created once, at module scope ---------------------------------------
+local living = world:query(Health):without(Dead):cached()
+local doomed = world:query(Dead):cached()
+local targeting = world:query(Target):cached()
+
+-- events: a plain array, filled through a helper, cleared by the last system ----
+local hits: { Hit } = {}
+local function dealDamage(target: jecs.Entity, amount: number)
+	table.insert(hits, { target = target, amount = amount })
+end
+
+-- systems, in the order they run -----------------------------------------------
+local function applyDamage()
+	for _, hit in hits do
+		local health = world:get(hit.target, Health)
+		if health then
+			-- the entity already has Health, so this set is not structural
+			world:set(hit.target, Health, health - hit.amount)
+		end
+	end
+end
+
+local function markDead()
+	local dying: { jecs.Entity } = {}
+	for entity, health in living do
+		if health <= 0 then
+			table.insert(dying, entity)
+		end
+	end
+	-- collect, then apply: works on upstream and on the fork
+	for _, entity in dying do
+		world:add(entity, Dead)
+	end
+end
+
+local function dropDeadTargets()
+	local stale: { jecs.Entity } = {}
+	for entity, target in targeting do
+		if not world:contains(target) or world:has(target, Dead) then
+			table.insert(stale, entity)
+		end
+	end
+	for _, entity in stale do
+		world:remove(entity, Target)
+	end
+end
+
+local function despawnDead()
+	if FORK then
+		-- fork: queue inside the loop, apply after it
+		local deferred = (world :: any).deferred
+		for entity in doomed do
+			deferred:delete(entity)
+		end
+		deferred:apply()
+	else
+		local dead: { jecs.Entity } = {}
+		for entity in doomed do
+			table.insert(dead, entity)
+		end
+		for _, entity in dead do
+			if world:contains(entity) then
+				world:delete(entity)
+			end
+		end
+	end
+end
+
+local function clearEvents()
+	table.clear(hits)
+end
+
+local function frame()
+	applyDamage()
+	markDead()
+	dropDeadTargets()
+	despawnDead()
+	clearEvents()
+end
+
+-- the patterns, exercised ------------------------------------------------------
+do
+	local victim = world:entity()
+	world:set(victim, Health, 100)
+	dealDamage(victim, 30)
+	dealDamage(victim, 20)
+	frame()
+	check("events: two hits in one frame both land", world:get(victim, Health) == 50)
+	check("events: the queue is empty after the frame", #hits == 0)
+end
+do
+	local model = { destroyed = false }
+	local npc, sword, hunter = world:entity(), world:entity(), world:entity()
+	world:set(npc, Health, 10)
+	world:set(npc, Model, model)
+	world:add(sword, pair(OwnedBy, npc))
+	world:set(hunter, Target, npc)
+
+	dealDamage(npc, 10)
+	applyDamage()
+	markDead()
+	check("marker tag: a dead entity is still alive, and leaves :without(Dead) queries", world:contains(npc) and not living:has(npc))
+	dropDeadTargets()
+	check("entity reference: a dead target is treated as no target", not world:has(hunter, Target))
+	despawnDead()
+	clearEvents()
+	check("despawn: the marked entity is deleted after the loop", not world:contains(npc))
+	check("owned link: the item is deleted with its owner", not world:contains(sword))
+	check("remove hook: the model is released when the entity is deleted", model.destroyed)
+end
+do
+	local npc = world:entity()
+	world:set(npc, MoveState, "idle")
+	world:set(npc, MoveState, "walking")
+	check("state: a value component holds one of several states", world:get(npc, MoveState) == "walking")
+
+	world:add(npc, Stunned)
+	local moving = 0
+	for _ in world:query(MoveState):without(Stunned) do
+		moving += 1
+	end
+	check("state: a tag is an independent yes/no that queries filter on", moving == 0)
+
+	world:add(npc, pair(Team, Red))
+	world:add(npc, pair(Team, Blue))
+	check("state: an exclusive pair replaces its previous target", world:target(npc, Team) == Blue and not world:has(npc, pair(Team, Red)))
+	local blue = 0
+	for _ in world:query(pair(Team, Blue)) do
+		blue += 1
+	end
+	check("state: a query selects one target of an exclusive pair", blue == 1)
+end
+do
+	-- "who points at me" over many changing targets: a table built for one frame
+	local a, b, c, prey = world:entity(), world:entity(), world:entity(), world:entity()
+	world:set(a, Target, prey)
+	world:set(b, Target, prey)
+	world:set(c, Target, a)
+
+	local hunters: { [jecs.Entity]: { jecs.Entity } } = {}
+	for entity, target in targeting do
+		local list = hunters[target]
+		if not list then
+			list = {}
+			hunters[target] = list
+		end
+		table.insert(list, entity)
+	end
+	check("reverse lookup: built once from the forward component", #hunters[prey] == 2 and #hunters[a] == 1)
+end
+do
+	local Speed = world:component<<number>>()
+	local Armor = world:component<<number>>()
+	local e = world:entity()
+	-- data components first, with their values in the same order; tags last
+	jecs.bulk_insert(world, e, { Speed, Armor, Stunned } :: { any }, { 16, 5 })
+	check("bulk_insert: spawns a fresh entity with plain components and tags", world:get(e, Speed) == 16 and world:get(e, Armor) == 5 and world:has(e, Stunned))
+end
+if FORK then
+	local deferred = (world :: any).deferred
+	local Shield = world:component<<number>>()
+	local Exposed = world:entity()
+	-- a remove listener must not change structure: it queues the change instead
+	world:removed(Shield, function(entity, _, deleted)
+		if not deleted then
+			deferred:add(entity, Exposed)
+		end
+	end)
+	local e = world:entity()
+	world:set(e, Shield, 1)
+	world:remove(e, Shield)
+	check("deferred: a change queued by a remove listener waits for apply", not world:has(e, Exposed))
+	deferred:apply()
+	check("deferred: ... and is made by it", world:has(e, Exposed))
+
+	-- a signal on one pair, disconnected when its target dies
+	local leader, follower = world:entity(), world:entity()
+	local Follows = world:entity()
+	local joined = 0
+	local disconnect: (() -> ())?
+	disconnect = world:added(pair(Follows, leader) :: any, function()
+		joined += 1
+	end)
+	world:added(Dead, function(entity)
+		if entity == leader and disconnect then
+			disconnect()
+			disconnect = nil
+		end
+	end)
+	world:add(follower, pair(Follows, leader))
+	world:add(leader, Dead)
+	check("pair signal: fires for its pair and is disconnected with its target", joined == 1 and disconnect == nil)
+end
+
+print(`{passed} passed, {failed} failed`)
+if failed > 0 then
+	require("@lune/process").exit(1)
+end
