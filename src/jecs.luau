@@ -2612,7 +2612,12 @@ local function ecs_bulk_insert(world: world, entity: i53, ids: { i53 }, values: 
 		table.sort(dst_types)
 
 		local to = archetype_ensure(world, dst_types)
-		new_entity(entity, r, to)
+		if r.row ~= 0 then
+			-- The entity lost its last component and has a row in the root archetype
+			entity_move(entity_index, entity, r, to)
+		else
+			new_entity(entity, r, to)
+		end
 		local ROOT_ARCHETYPE = world.ROOT_ARCHETYPE
 
 		for i, id in ids do
@@ -3005,7 +3010,9 @@ local function world_new(DEBUG: boolean?)
 
 			local ROOT_ARCHETYPE = ROOT_ARCHETYPE
 			local src_is_root_archetype = src == ROOT_ARCHETYPE
-			if not src_is_root_archetype then
+			-- An entity that lost its last component has a row in the root
+			-- archetype and needs to be moved out of it as well.
+			if not src_is_root_archetype or record.row ~= 0 then
 				-- If there was a previous archetype, then the entity needs to move the archetype
 				inner_entity_move(entity, record, to)
 			else
@@ -3104,7 +3111,7 @@ local function world_new(DEBUG: boolean?)
 
 		local ROOT_ARCHETYPE = ROOT_ARCHETYPE
 		local src_is_root_archetype = src == ROOT_ARCHETYPE
-		if not src_is_root_archetype then
+		if not src_is_root_archetype or record.row ~= 0 then
 			inner_entity_move(entity, record, to)
 		else
 			if #to.types > 0 then

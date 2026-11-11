@@ -1582,6 +1582,53 @@ TEST("world:delete()", function()
 			world:delete(e)
 		end)
 	end
+
+	do CASE "#320 re-adding to an entity that lost its last component should not corrupt rows when another empty entity is deleted"
+		local readd = {
+			function(world, e, A)
+				world:set(e, A, "e1-data")
+			end,
+			function(world, e, A)
+				world:add(e, A)
+				world:set(e, A, "e1-data")
+			end,
+			function(world, e, A)
+				jecs.bulk_insert(world, e, { A }, { "e1-data" })
+			end,
+		}
+
+		for _, fn in readd do
+			local world = jecs.world()
+			local A = world:component()
+
+			-- Removing the last component puts e2 and e1 in the root archetype
+			local e2 = world:entity()
+			world:set(e2, A, "e2-data")
+			world:remove(e2, A)
+
+			local e1 = world:entity()
+			world:set(e1, A, "e1-data")
+			world:remove(e1, A)
+
+			local e3 = world:entity()
+			world:set(e3, A, "e3-data")
+
+			fn(world, e1, A)
+
+			world:delete(e2)
+			CHECK(world:get(e1, A) == "e1-data")
+			CHECK(world:get(e3, A) == "e3-data")
+
+			world:delete(e1)
+			local count = 0
+			for e, v in world:query(A) do
+				count += 1
+				CHECK(e == e3 and v == "e3-data")
+			end
+			CHECK(count == 1)
+			CHECK(world:get(e3, A) == "e3-data")
+		end
+	end
 end)
 
 TEST("world:each()", function()
