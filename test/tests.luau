@@ -2880,10 +2880,26 @@ TEST("world:entity()", function()
 		local e = world:entity()
 		CHECK(ECS_ID(e) == pin)
 		CHECK(ECS_GENERATION(e) == 2^16-1)
+		-- The generation is 24 bits wide, so it keeps counting past 2^16.
 		world:delete(e)
+		local stale = e
 		e = world:entity()
 		CHECK(ECS_ID(e) == pin)
-		CHECK(ECS_GENERATION(e) == 0)
+		CHECK(ECS_GENERATION(e) == 2^16)
+		CHECK(world:contains(e))
+		CHECK(not world:contains(stale))
+
+		-- Recycling 2^24 times is too slow for a test, so the wrap is
+		-- checked on the id arithmetic directly.
+		local last = (pin + (2^24-2) * 2^24) :: any
+		last = ECS_GENERATION_INC(last)
+		CHECK(ECS_ID(last) == pin)
+		CHECK(ECS_GENERATION(last) == 2^24-1)
+		CHECK(last < 2^48)
+		CHECK(not IS_PAIR(last))
+		last = ECS_GENERATION_INC(last)
+		CHECK(last == pin)
+		CHECK(ECS_GENERATION(last) == 0)
 	end
 
 

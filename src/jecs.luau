@@ -368,7 +368,7 @@ export type EntityIndex = {
 -- stylua: ignore start
 
 local ECS_ENTITY_MASK =       bit32.lshift(1, 24)
-local ECS_GENERATION_MASK =   bit32.lshift(1, 16)
+local ECS_GENERATION_MASK =   bit32.lshift(1, 24)
 local ECS_PAIR_OFFSET = 	                 2^48
 
 local ECS_ID_DELETE =                 	   0b0001
