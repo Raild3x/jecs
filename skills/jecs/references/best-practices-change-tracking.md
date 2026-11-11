@@ -13,7 +13,7 @@
 | Few entities change per frame | Recording listener | Work is proportional to the changes, not the entity count |
 | Most change every frame, or the component is written in a hot loop | Comparison | A listener would make every `set` about 2x; the comparison costs one read per entity |
 | The old value is needed, or changes arrive without `set` (table mutation, column writes) | Comparison | It keeps the previous value and sees every difference |
-| Must act immediately | The code making the change, or a hook | A listener runs mid-write, where structural changes are unsafe |
+| Must act immediately | The code making the change. A hook only when the reaction is the component's own invariant | A listener or hook runs mid-write, where structural changes are unsafe and other entities may be mid-delete |
 
 ## Patterns
 

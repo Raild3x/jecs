@@ -19,7 +19,7 @@ A "spawn system" that polls for something to spawn is a function call with a fra
 | Cached query per system, created once at module scope | `:cached()` in the body installs new observers on every call |
 | Conditions go in the query (`:with`, `:without`), not an `if` | The query skips whole archetypes; the `if` visits every row |
 | One job per system | It can be removed, reordered, profiled and tested alone |
-| State lives in components or a singleton, not in module variables | Other systems can read it, and a fresh world starts clean in tests |
+| State another system or a test must see lives in components or a singleton | A module variable is visible to one system only. Cached queries and event arrays at module scope are fine for a single world; with several worlds (tests that build a fresh one) create them per world, since a cached query stays bound to the world that made it |
 | Write with `world:set` | Direct column writes skip hooks and signals |
 | No yielding | Other code changes the world mid-loop. `task.spawn` slow work, mark the entity (`ComputingPath`) so it is not started twice, and feed the result back with a check that the entity is still alive |
 | Order by data flow: input, emit events, apply events, mark, delete | A reader placed before its writer acts on last frame's data |

@@ -4106,6 +4106,115 @@ TEST("world:query()", function()
 	end
 end)
 
+TEST("world:delete() while callbacks touch the entity being deleted", function()
+	do CASE "a child's OnRemove should not reach another entity's row through its dying parent"
+		local world = jecs.world()
+		local Name = world:component() :: Id<string>
+		local Count = world:component() :: Id<number>
+		local Child = world:component() :: Id<boolean>
+
+		local parent, bystander = world:entity(), world:entity()
+		world:set(parent, Name, "parent")
+		world:set(parent, Count, 1)
+		world:set(bystander, Name, "bystander")
+		world:set(bystander, Count, 100)
+
+		local seenName: string? = "unset"
+		world:set(Child, jecs.OnRemove, function(entity)
+			local p = world:parent(entity)
+			if p then
+				seenName = world:get(p, Name)
+				local count = world:get(p, Count)
+				world:set(p, Count, (count or 0) - 1)
+			end
+		end)
+		local child = world:entity()
+		world:set(child, Child, true)
+		world:add(child, pair(ChildOf, parent))
+
+		world:delete(parent)
+
+		CHECK(seenName == nil)
+		CHECK(world:get(bystander, Count) == 100)
+		CHECK(world:get(bystander, Name) == "bystander")
+		CHECK(not world:contains(parent))
+		CHECK(not world:contains(child))
+		-- the write made to the dying parent must not leave a row behind
+		local rows = 0
+		for e in world:query(Count) do
+			rows += 1
+			CHECK(e == bystander)
+		end
+		CHECK(rows == 1)
+	end
+
+	do CASE "a removed listener on a relation should not reach another entity through the deleted target"
+		local world = jecs.world()
+		local Name = world:component() :: Id<string>
+		local Follows = world:entity()
+
+		local leader, bystander, follower = world:entity(), world:entity(), world:entity()
+		world:set(leader, Name, "leader")
+		world:set(bystander, Name, "bystander")
+		world:add(follower, pair(Follows, leader))
+
+		local seenName: string? = "unset"
+		world:removed(Follows, function(_, id)
+			local target = jecs.pair_second(world, id)
+			seenName = world:get(target, Name)
+			world:set(target, Name, "written-by-listener")
+		end)
+
+		world:delete(leader)
+
+		CHECK(seenName == nil)
+		CHECK(world:get(bystander, Name) == "bystander")
+		CHECK(not world:contains(leader))
+		CHECK(world:contains(follower))
+		local rows = 0
+		for e in world:query(Name) do
+			rows += 1
+			CHECK(e == bystander)
+		end
+		CHECK(rows == 1)
+	end
+
+	do CASE "debug world should accept writes to an entity after a hook of its own aborted its delete"
+		local world = jecs.world(true)
+		local A = world:component() :: Id<number>
+		local B = world:component() :: Id<number>
+		world:set(A, jecs.OnRemove, function()
+			error("hook failed")
+		end)
+		local e = world:entity()
+		world:set(e, A, 1)
+
+		CHECK(not pcall(world.delete, world, e))
+		CHECK(world:contains(e))
+		local ok = pcall(world.set, world, e, B, 2)
+		CHECK(ok)
+		CHECK(world:get(e, B) == 2)
+	end
+end)
+
+TEST("bulk_remove()", function()
+	do CASE "should raise on a wildcard pair instead of removing another id"
+		local world = jecs.world()
+		local R, Z = world:entity(), world:entity()
+		local e, t, z = world:entity(), world:entity(), world:entity()
+		world:add(e, pair(R, t))
+		world:add(e, pair(Z, z))
+
+		CHECK(not pcall(jecs.bulk_remove, world, e, { pair(R, __) }))
+		CHECK(world:has(e, pair(R, t)))
+		CHECK(world:has(e, pair(Z, z)))
+
+		jecs.bulk_remove(world, e, { pair(R, t) })
+		CHECK(not world:has(e, pair(R, t)))
+		CHECK(world:has(e, pair(Z, z)))
+	end
+end)
+
 TEST("world:remove()", function()
 	do CASE "should raise on a wildcard pair instead of corrupting the entity"
 		local world = jecs.world()

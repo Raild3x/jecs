@@ -42,15 +42,15 @@ Design choices only matter for speed at thousands of entities touched every fram
 
 | Symptom | Likely cause | See |
 |---|---|---|
-| Hook never fires | Installed after the id's first use, or only `OnChange` (the first `set` is `OnAdd`) | [feature-hooks](references/feature-hooks.md) |
+| Hook never fires | Installed after the id's first use; only `OnChange` installed (the first `set` is `OnAdd`); a second hook of the same kind replaced it; the hook is on a component used as a pair target (`pair(Begin, Position)` does not run `Position`'s hooks) | [feature-hooks](references/feature-hooks.md) |
 | `changed` never fires | Table mutated in place; no `world:set` | [best-practices-change-tracking](references/best-practices-change-tracking.md) |
 | Query yields nothing, or only the rest, the second time | An uncached query was stored and iterated again | [core-queries](references/core-queries.md) |
-| `has` is true but `get` is nil | `world:add` used for a data component | [core-basics](references/core-basics.md) |
+| `has` is true but `get` is nil | `world:add` used for a data component, or `world:set(e, id, nil)` | [core-basics](references/core-basics.md) |
 | Loop skips or repeats entities | Structural change inside the loop | [best-practices-systems](references/best-practices-systems.md) |
 | A tag vanishes from every entity when an unrelated entity is deleted | `jecs.tag()` / `jecs.component()` called after `jecs.world()` | [core-basics](references/core-basics.md) |
 | Write does nothing | Dead handle on a normal world | [core-basics](references/core-basics.md) |
 | Entity linked to the wrong target | `pair()` built from a stale handle | [feature-pairs](references/feature-pairs.md) |
-| Queued change never happens | `apply()` not called | [feature-deferred](references/feature-deferred.md) |
+| Queued change never happens | `apply()` not called; the entity or a pair's target died before `apply`; it went to a different queue than the one applied | [feature-deferred](references/feature-deferred.md) |
 | Memory or frame time climbs | `:cached()` inside a system; pairs retargeted or built every frame across many targets | [best-practices-archetypes](references/best-practices-archetypes.md) |
 
 ## Mistakes that cut across topics
@@ -60,8 +60,10 @@ Design choices only matter for speed at thousands of entities touched every fram
 | Structural change inside a query, `each` or `children` loop | Entities skipped or visited twice | Queue on `world.deferred`, apply after the loop |
 | Structural change or a raise in a remove hook/listener | Undefined; operation aborts half done | Queue on `world.deferred`; keep callbacks trivial |
 | `jecs.component/tag/meta` after `jecs.world()` | Id collides with a world id (`world:component()` raises, debug world raises on writes); `meta` ignored | Ids and config in one module, then the world |
-| Hook or trait set at runtime | Applied unevenly: ignored for ids and pairs already in use, honoured for pairs to new targets | `jecs.meta`, or a signal |
-| Write or `pair()` through a stored handle | Write ignored; adding the pair raises, or once the slot is reused links to its new occupant | `world:contains` first |
+| Hook or trait set at runtime | Applied unevenly: ignored for ids and pairs already in use, partly honoured for pairs to new targets | `jecs.meta`, or a signal |
+| Write or `pair()` through a stored handle | Write ignored; adding the pair raises, or once the slot is reused links to its new occupant | `world:contains` first, and decide what a dead handle means: a setter that just returns keeps the old value, where clearing it is usually what was meant |
+| Reading or writing a parent or pair target from a remove hook or listener | It may be the entity being deleted: `contains` is true, `get` gives nil, writes are thrown away with it | Record the id, act after the delete returns, or queue on `world.deferred` |
+| A wildcard pair passed to `add`, `set`, `remove` or `bulk_remove` | `remove` and `bulk_remove` raise. On a normal world `add` stores a literal wildcard pair and `set` overwrites the first target's value | Name the target; iterate `world:targets` |
 
 Topic mistakes are in each reference file.
 

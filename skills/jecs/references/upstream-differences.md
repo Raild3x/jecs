@@ -18,7 +18,10 @@ The rest of this skill describes the fork `raild3x/jecs` 0.11.0-fork.1. Read thi
 | A queued pair whose target dies before `apply` | Skipped | No queue upstream | In collect-then-apply, check `world:contains(target)` before adding the pair |
 | `world:remove(e, pair(R, jecs.Wildcard))`, normal world | Raises, nothing changes | The pairs stay and the entity is corrupted: `get` returns nil, queries yield it twice | Collect `world:targets(e, R)`, remove each |
 | A pair with a wildcard relation, `pair(jecs.Wildcard, t)`, in a debug world | Rejected like a wildcard target | Not detected | Never pass one to `add`, `set` or `remove` |
-| An entity that lost its last component and then gets one again | Correct | Its data is silently swapped with another entity's when a second emptied entity is deleted | Avoid removing an entity's last component; keep a permanent tag on it |
+| An entity that lost its last component (by `remove`, or because its only tag or pair target was deleted) and then gets one again | Correct | Reads nil or another entity's data once any entity without components is deleted or cleared, a fresh `world:entity()` included | Keep a permanent tag on every entity, and never delete that tag |
+| Reading or writing an entity that is mid-delete from a remove hook or listener (a child's `OnRemove` reaching its parent, a `removed` listener reaching the pair's target) | Reads give nil; writes are thrown away with the entity | `world:contains` is true, reads return another entity's data and a `set` overwrites that entity | Never touch another entity in a remove callback: record the id and act after the delete |
+| `jecs.bulk_remove` with a wildcard pair | Raises | Removes an unrelated id | Pass each pair |
+| A hook raising during a debug-world `delete` | The entity is usable afterwards | The next write to it raises once | Keep hooks from raising |
 | `bulk_insert` with a `false` value | Stored | Dropped: `get` returns nil | `world:set` for boolean values |
 | Generation | 24 bits: a handle stays unequal for 16,777,216 reuses of its slot | 16 bits: 65,536 | Do not keep handles across very long sessions without `world:contains` |
 
@@ -46,4 +49,4 @@ A structural change wanted from a remove hook or listener has no queue to go to:
 
 ## Checking
 
-Copy the project's `jecs.luau` into [`../verify/`](../verify/) and run `lune run facts.luau` and `lune run examples.luau`. The scripts detect upstream and assert the upstream column above (136 and 28 assertions pass there; 154 and 31 on the fork).
+Copy the project's `jecs.luau` into [`../verify/`](../verify/) and run `lune run facts.luau` and `lune run examples.luau`. The scripts detect upstream and assert the upstream column above (147 and 28 assertions pass there; 170 and 31 on the fork).

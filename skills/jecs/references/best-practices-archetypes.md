@@ -58,7 +58,7 @@ Ratios from lune and from Roblox Studio (JECS native). Two figures = the two env
 | ... read the target for every row of a loop | wildcard query + `world:target` 7-15x a component column (lune), 6-10x (Studio) |
 | ... same work as one query per target, vs a component column (lune) | 1.1x at 1,000 holders per target; 1.6x at 100; 5-6x at 10 |
 | ... broad query over the holders (lune) | 1.0x at 100 archetypes; 1.2x at 1,000 |
-| ... retarget | exclusive pair about 4x a `set` at any target count once that move has happened before; 14-22x measured over a first pass at 10,000 targets, and 40-240x for a single first move (lune) |
+| ... retarget | exclusive pair 4-5x a `set` on an entity with 2 other components, 7-11x with 10, at any target count once that move has happened before; 14-35x measured over a first pass at 10,000 targets, and 40-240x for a single first move (lune) |
 | ... reverse lookup | pair query 9x faster than a scan at 10 targets; about 200x at 1,000 |
 | ... delete all targets | 2-3x dearer from 10 to 1,000 targets; 15-30x again at 10,000 |
 | Containment, 100 owners x 30 items: build (lune) | pair on item 3x an array on the owner (119 archetypes); pair on owner 90-180x (3,019 archetypes) |
@@ -66,4 +66,4 @@ Ratios from lune and from Roblox Studio (JECS native). Two figures = the two env
 | Pair signals (lune) | 12-20 ns per pair listener per event on the relation |
 | `bulk_insert` vs `set` per component (lune) | slower at 3, equal at 6, 1.57x faster at 12 |
 
-The figures come from one-off benchmarks, not from the scripts in `verify/`. An independent re-measurement in lune put about half of them inside the ranges above and the rest within 2x. Treat them as orders of magnitude.
+The figures come from one-off benchmarks in lune and Studio. `lune run bench_ops.luau` and `lune run bench_links.luau` in [`../verify/`](../verify/) re-measure most rows in lune and print each beside the table's figure; an independent run put about half inside the ranges above and the rest within 2x. Treat them as orders of magnitude.

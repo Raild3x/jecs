@@ -1,6 +1,6 @@
 # Core basics
 
-Every statement in these files is asserted in [`../verify/`](../verify/).
+Library behaviour stated in these files is asserted in [`../verify/`](../verify/) where a script can check it; cost figures and typing are not. Run it when a rule looks wrong.
 
 ## Setup
 
@@ -42,7 +42,7 @@ Singleton: `world:set(Time, Time, 12.5)`, `world:get(Time, Time)`. World-wide st
 
 - A handle is slot + generation: `jecs.ECS_ID(e)`, `jecs.ECS_GENERATION(e)`.
 - The newest freed slot is reused first, generation + 1. The old handle stays unequal until the generation wraps (16,777,216 reuses), so a stored handle can be compared and checked safely.
-- Reads through a dead handle are safe: `get` nil, `has` false.
+- `get` and `has` on a dead handle are safe: nil and false. A pair or query built from it is not: once the slot is reused, `world:has(x, pair(R, dead))`, `world:query(pair(R, dead))` and `world:children(dead)` answer for the new occupant.
 - Check `world:contains` before a write or `pair()`. A pair id keeps only the slot, not the generation: `pair()` itself never fails. Adding a pair built from a dead handle raises while the slot is free, and silently links to the new occupant once the slot is reused.
 
 ## Mistakes
@@ -51,7 +51,7 @@ Singleton: `world:set(Time, Time, 12.5)`, `world:get(Time, Time)`. World-wide st
 |---|---|---|
 | `world:component()` as a marker | A column and one of 256 ids ("Too many components" past them) | `jecs.tag()` |
 | `world:set` on a tag (any value, nil too) | Raises after the tag is already added, with no `OnAdd` and no `added` signal | `world:add` |
-| `world:add` of a data component | `has` true, `get` nil | `world:set` |
+| `world:add` of a data component, or `world:set(e, id, nil)` | `has` true, `get` nil | `world:set` with a value; `world:remove` to clear |
 | Fifth id to `get` / `has` | On a live entity `get` raises "args exceeded"; `has` raises only if the first four are present, else false | Two calls |
 | `world:exists` to validate | True for a dead handle | `world:contains` |
 | Write to a dead handle | Ignored (normal world), raises (debug) | `world:contains` first |

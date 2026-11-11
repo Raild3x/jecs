@@ -2794,6 +2794,12 @@ local function ecs_bulk_remove(world: world, entity: i53, ids: { i53 })
 		if not columns_map[id] then
 			continue
 		end
+		-- A wildcard pair is in the map but is not one of the archetype's
+		-- ids, so the search below found nothing and table.remove took the
+		-- last id instead.
+		if ECS_IS_PAIR(id) and ECS_ID_IS_WILDCARD(id) then
+			error("bulk_remove cannot take a wildcard pair. Iterate world:targets(entity, relation) and pass each pair.", 2)
+		end
 
 	    remove[id] = true
 		local idr = component_index[id]
@@ -3769,6 +3775,13 @@ local function world_new(DEBUG: boolean?)
 				end
 			end
 			archetype_delete(world, record.archetype, record.row)
+			-- The row now belongs to the entity that was swapped into it. The
+			-- callbacks run below (cascades, pairs losing this target) can
+			-- still reach this entity, so it is left where a new entity
+			-- starts: its reads give nil instead of another entity's data,
+			-- and a write no longer lands in that entity's row.
+			record.archetype = ROOT_ARCHETYPE
+			record.row = 0
 		end
 
 		local component_index = world.component_index
@@ -4004,6 +4017,12 @@ local function world_new(DEBUG: boolean?)
 			end
 		end
 
+		-- A callback above may have written to this entity and so given it a
+		-- row again. That row goes with the entity.
+		if record.row ~= 0 then
+			archetype_delete(world, record.archetype, record.row)
+		end
+
 		local dense = record.dense
 		local i_swap = entity_index.alive_count
 		entity_index.alive_count = i_swap - 1
@@ -4197,8 +4216,13 @@ local function world_new(DEBUG: boolean?)
 		local function world_delete_checked(world: world, entity: i53)
 			DEBUG_DELETING_ENTITY = entity
 			DEBUG_IS_INVALID_ENTITY(entity)
-			canonical_world_delete(world, entity)
+			-- An error from a hook leaves the entity alive, so it must not
+			-- stay marked as being deleted.
+			local ok, err = pcall(canonical_world_delete, world, entity)
 			DEBUG_DELETING_ENTITY = nil
+			if not ok then
+				error(err, 0)
+			end
 		end
 		world_delete = world_delete_checked
 		world.delete = world_delete_checked

@@ -29,7 +29,8 @@ Full decision table and patterns: [feature-pairs](feature-pairs.md).
 ## Handles
 
 - Storing a handle is fine. A dead handle never equals its slot's next occupant.
-- Reads are safe on a dead handle (`get` nil, `has` false).
+- `get` and `has` on a dead handle are safe (nil, false). A pair or query built from it answers for the slot's next occupant.
+- When the check fails, decide what the dead handle means. `if not world:contains(target) then return end` in a setter leaves the old link in place; if "no target" is what a dead target means, remove the link there.
 - `world:contains` before a write or `pair()`.
 
 Entity in a component: nothing clears it when the target dies. Check where it is read, and drop it when stale.

@@ -23,7 +23,7 @@ disconnect()
 
 - Same arguments and timing as the matching hook: [feature-hooks](feature-hooks.md).
 - Works on an id already in use. Runs after the hook.
-- A signal on a relation runs for its pairs; `id` is the pair id, `jecs.pair_second(world, id)` its target.
+- A signal on a relation runs for its pairs; `id` is the pair id, `jecs.pair_second(world, id)` its target. In a `removed` listener that target may be mid-delete: it passes `world:contains`, reads as empty and loses writes ([feature-hooks](feature-hooks.md)).
 - A listener may disconnect itself during dispatch; the others still run.
 - The dispatcher stays installed after the last disconnect, so the `set` cost does not return to baseline.
 

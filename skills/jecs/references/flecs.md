@@ -46,7 +46,7 @@ Each of these is a Flecs feature with no JECS equivalent. When a Flecs pattern d
 | Query traversal (`up`, `cascade`) and query variables | Walk the hierarchy by hand with `world:parent` and `world:children`. Join by running one query and calling `world:get` on the related entity. |
 | `order_by`, `group_by` | Collect the results and sort them. Iteration order follows archetype layout and is not a contract. |
 | Non-fragmenting relationships (`DontFragment`) and sparse components | Every pair fragments. For a link with many targets store the entity in a component. |
-| Observers over several terms, and custom events | Signals watch one id. The repository's `modules/OB` has `observer(query, callback)` and `monitor(query)` over a multi-term query, but it is not in the wally package: copy it in if needed. Send game events through an array that systems read. |
+| Observers over several terms, and custom events | Signals watch one id. The repository's `modules/OB` has `observer(query, callback)` and `monitor(query)` over a multi-term query, but it is not in the wally package: copy it in and point its `@jecs` require at your copy of the library. Send game events through an array that systems read. |
 | `in` / `out` annotations and built-in change detection | A recording `changed` listener, or a comparison against the last value handled. |
 | Entity lookup by name or path | Keep your own table from name to entity. |
 | Modules, the REST API, the explorer, timers, the meta addon | Plain Luau modules. Debugging tools are separate projects. |

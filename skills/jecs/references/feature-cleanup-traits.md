@@ -22,6 +22,8 @@ jecs.meta(Temporary, pair(jecs.OnDelete, jecs.Delete))
 | `pair(jecs.OnDeleteTarget, jecs.Delete)` on a relation | Deleting a target deletes every holder of a pair to it |
 | `pair(jecs.OnDelete, jecs.Delete)` on an id | Deleting the id deletes every entity that has it |
 | none | Deleting an id or target removes it from holders; they survive |
+| `pair(jecs.OnDelete, jecs.Delete)` on a relation | Also deletes holders when a target of the relation is deleted |
+| Deleting a relation that has `(OnDeleteTarget, Delete)` | Deletes every holder of its pairs |
 | `jecs.ChildOf` | Built in: exclusive + `(OnDeleteTarget, Delete)` |
 
 - Cascade order: the parent's remove callbacks run before its children's.
@@ -33,6 +35,6 @@ jecs.meta(Temporary, pair(jecs.OnDelete, jecs.Delete))
 
 | Mistake | Result | Instead |
 |---|---|---|
-| Trait added after the id's first use | Applied unevenly: ignored for ids and pairs already in use, honoured for pairs to new targets, and picked up once the id's archetypes are destroyed (after `world:cleanup()`). `Exclusive` is always ignored. Debug world raises. So some holders die with their target and others do not | `jecs.meta` before the world |
+| Trait added after the id's first use | Debug world raises. Normal world: a cleanup trait is ignored for pairs already in use and honoured for pairs to new targets, so some holders die with their target and others do not. `Exclusive` is ignored until every pair archetype of the relation is gone, then honoured | `jecs.meta` before the world |
 | Expecting a component that stores an entity to be cleaned | Stale handle stays | Use a pair, or check `world:contains` on read |
 | Collecting cascaded entities for a manual delete | Already dead; debug world raises | `world.deferred:delete`, which skips dead entities, or `world:contains` first |

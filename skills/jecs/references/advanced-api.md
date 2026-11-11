@@ -5,7 +5,7 @@
 ```luau
 -- data first, values in the same order; tags last
 jecs.bulk_insert(world, world:entity(), { Speed, Armor, Stunned }, { 16, 5 })
-jecs.bulk_remove(world, entity, { Speed, Armor })
+jecs.bulk_remove(world, entity, { Speed, Armor }) -- a wildcard pair raises
 ```
 
 One archetype move instead of one per component. Use only to spawn a fresh entity with about 8+ plain components and tags, when measured: it is slower than `set` at 3 components, equal at 6, 1.57x faster at 12, and it skips the checks below.
@@ -40,7 +40,7 @@ world:set(entity, Dynamic, 42)
 - `set`, `add`, `remove` on a dead entity
 - adding a dead entity as an id
 - removing a wildcard pair
-- any `add`/`set`/`remove` on an entity from its own `OnRemove` while it is being deleted, direct or cascaded (the delete is abandoned)
+- any `add`/`set`/`remove` on an entity from its own `OnRemove` while it is being deleted, direct or cascaded. The delete stops half way: the entity stays alive with its components, but the remove hooks of the ids before the failing one have already run, so a hook that releases a resource will run again on the next delete
 - `delete` of a dead handle
 - a hook or trait set after the id's first use
 - a raw hook on an id that has signal listeners
@@ -48,7 +48,7 @@ world:set(entity, Dynamic, 42)
 
 Run it in Studio and in tests: on a normal world all but the wildcard removal are silent.
 
-Not checked: `bulk_insert`; `world:clear` on a dead handle; a pair built from a stale handle whose slot was reused.
+Not checked: `bulk_insert`; `world:clear` on a dead handle; a pair built from a stale handle whose slot was reused; the `jecs.Component` trait added to an entity already in use (ignored).
 
 ## world:cleanup
 

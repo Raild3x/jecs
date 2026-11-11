@@ -28,6 +28,7 @@ After the run, copy the scenario's `check.luau` to the project root and `lune ru
 | `events/` | fork | queued damage, per-hit callback, changed-Health list, inventory notify | events, change tracking |
 | `review/` | fork | find the defects in `game.luau`, write `REVIEW.md` | recognising mistakes |
 | `design/` | fork | ten modelling decisions from `BRIEF.md`: write `components.luau` and `DESIGN.md` | choosing pair, component, tag, value, entity, event queue |
+| `inherit/` | fork | six tickets on an existing `game.luau`: targets, zones, a per-frame count, carried items, queued damage with thorns, speed | inferring the model from stated use; stale handles; late traits; event queues |
 
 Ticket wording for each scenario is in the "Tickets" section at the end.
 
@@ -178,6 +179,58 @@ Adversarial review, same day: one reviewer on the session's model, told to assum
 
 The reviewer could not break any code example, and re-measured 20 cost figures: about half inside the skill's ranges, the rest within about 2x (ranges widened), and one wrong in kind (retarget cost, corrected above).
 
+## Results, 2026-11-11: inherit scenario, blind graded
+
+Sonnet at medium effort, three runs per arm. Hidden checks are `inherit/check.luau` (23). A separate grader on the session's model scored the nine answers under neutral names against `inherit/KEY.md`, without knowing arms existed, and ran its own probes for defects the checks miss (110,236 tokens, 4 minutes, 20 tool calls). For this scenario the weights are correctness 30, safety 25, model choice 25, conventions 15, economy 5: there is no written answer to grade reasoning on.
+
+| Arm | Run | Correct | Safety | Model | Conventions | Economy | Total | Hidden checks | Tokens | Time | Tool calls |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| No skill | 1 | 3 | 3 | 3 | 1 | 3 | 68% | 23/23 | 57,718 | 48 s | 6 |
+| No skill | 4 | 2 | 3 | 3 | 0 | 3 | 56% | 23/23 | 60,038 | 49 s | 10 |
+| No skill | 7 | 0 | 3 | 3 | 1 | 3 | 45% | 22/23 | 58,214 | 53 s | 10 |
+| Skill before the rewrite | 2 | 0 | 4 | 3 | 3 | 3 | 59% | 23/23 | 65,120 | 42 s | 7 |
+| Skill before the rewrite | 5 | 3 | 4 | 3 | 3 | 3 | 81% | 23/23 | 67,007 | 57 s | 10 |
+| Skill before the rewrite | 8 | 1 | 4 | 3 | 3 | 3 | 66% | 23/23 | 65,736 | 42 s | 7 |
+| Skill after the rewrite | 3 | 1 | 4 | 3 | 3 | 3 | 66% | 23/23 | 68,905 | 48 s | 11 |
+| Skill after the rewrite | 6 | 4 | 4 | 3 | 3 | 3 | 89% | 23/23 | 71,237 | 51 s | 8 |
+| Skill after the rewrite | 9 | 2 | 3 | 3 | 2 | 3 | 64% | 23/23 | 66,995 | 46 s | 15 |
+
+Arm means: no skill 56%, skill before 69%, skill after 73%.
+
+- A skill is worth 13 to 17 points, in conventions and safety: every no-skill run set its traits with `world:add` after the world and cached no query.
+- The two skill versions are 4 points apart with a 25-point spread inside each arm. Three runs do not separate them.
+- Model choice was the same in all nine answers, the no-skill ones included. The tickets say how often things happen, and that was enough for Sonnet to choose the component for the target and the pair for the zone unaided. This scenario does not test the link and state guidance either; a scenario that does would have to hide the rates in existing code or in a profile.
+- The hidden checks passed almost everywhere. The spread comes from defects the grader found by probing:
+
+| Defect | Runs | Severity given |
+|---|---|---|
+| `setTarget` with a dead target returns early, so the NPC keeps its old target | 2, 3 | Critical |
+| A stale target is never dropped: Velocity is forced to 0 every frame | 1, 4, 5, 7, 8, 9 | Minor |
+| `countIn` returns the number of archetypes | 7 | Critical |
+| The death query lacks `Npc`: any entity with Health at 0 is deleted | 8 | Minor |
+| A live target without Position is treated as gone | 2 | Minor |
+| Applies the shared `world.deferred` and so flushes other modules' changes | 9 | Minor |
+| Traits set with `world:add` after the world | 1, 4, 7 | Minor |
+| Per-frame queries not cached | 1, 4, 7, 9 | Minor |
+
+The first row is a guard the skill asks for (`world:contains` before a write) written so that it hides the failure. The skill now says to decide what a dead handle means. Not re-tested in this table.
+
+Second adversarial review, same day: 227,464 tokens, 12 minutes, 40 tool calls. One critical, eight major and eleven minor findings; all reproduced.
+
+| Severity | Finding | Now |
+|---|---|---|
+| Critical | During `world:delete` the dying entity passed `world:contains` while its row belonged to another entity: a child's `OnRemove` or a `removed` listener read and overwrote that other entity | Fixed in the library; the skill says not to touch other entities from a remove callback, and why |
+| Major | A hook set late on a relation: `OnChange` and `OnRemove` fire for new targets, `OnAdd` never | Corrected |
+| Major | `Exclusive` set late is ignored only while a pair of the relation exists | Corrected |
+| Major | Wildcard pairs in `add`, `set` and `bulk_remove` fail silently on a normal world | `bulk_remove` fixed in the library; the others documented |
+| Major | The deferred queue does not guard a plain id that dies | Documented |
+| Major | A component's hooks do not run for `pair(tag, component)` | Documented |
+| Major | "Every statement is asserted in verify/" was false; one assertion passed for the wrong reason | Sentence corrected, assertion replaced, 16 added |
+| Major | The upstream emptied-entity row named too narrow a trigger | Corrected |
+| Minor | A debug world left an entity marked as being deleted after its hook raised (fixed in the library); an abandoned delete has already run earlier hooks; retarget cost depends on entity width; the symptom table missed causes; module-scope state against several worlds; and six more | Corrected in place |
+
+Not verified by either reviewer: the typing claim in SKILL.md (no type checker could be run) and the Studio figures.
+
 ## Tickets
 
 **tickets:** (1) `Game.stun(unit)` / `Game.unstun(unit)`; a stunned unit takes no poison in `Game.step`. (2) No unit's Health may exceed 100, whoever writes it; other modules call `Game.world:set` directly, so enforce it with a hook. (3) At the end of `Game.step` remove every unit with Health <= 0; followers of a removed unit stay alive. (4) `Game.countPoisoned()`, called every frame.
@@ -189,5 +242,7 @@ The reviewer could not break any code example, and re-measured 20 cost figures: 
 **events:** (1) `Game.damage(target, amount)`: many calls per frame, from inside query loops, several per target; nothing changes until `Game.step`, which applies every hit. (2) `Game.onHit(callback)`: `callback(target, amount)` once per applied hit. (3) `Game.takeChangedHealth()`: live units whose Health was written since the last call, each once, new spawns included; others write Health directly; thousands of units, few change. (4) `Game.addItem(unit, item)`: listeners on `world:changed(Inventory)` must be notified per item.
 
 **design:** the brief is `design/BRIEF.md`, handed over as is.
+
+**inherit:** the tickets are `inherit/TICKETS.md`, handed over as is with `inherit/game.luau` as `src/game.luau`. Run `check.luau` under a time limit.
 
 **review:** "`src/game.luau` ships in 20 minutes. Review it for defects in how it uses JECS. Write findings to `REVIEW.md`: line, what is wrong, what happens at runtime, the fix. Real defects only."

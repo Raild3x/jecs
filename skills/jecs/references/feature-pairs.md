@@ -14,7 +14,7 @@
 |---|---|---|
 | The holder merely points at the target and nothing asks the reverse | `Target`, `LastAttacker` | A pair buys nothing here and still fragments storage |
 | A loop reads the target for every row | Steering reads each NPC's target | `world:target` per row costs 6-15x reading a component column |
-| The link is retargeted often | Target re-picked twice a second | Retargeting a pair is a structural change: about 4x a `set`, and tens of times more the first time an entity shape moves to a given target |
+| The link is retargeted often | Target re-picked twice a second | Retargeting a pair is a structural change: 4-10x a `set` depending on how many components the entity has, and tens of times more the first time an entity shape moves to a given target |
 | Targets times holder shapes would pass the hundreds | Thousands of distinct attackers | One archetype per target per holder shape: build cost is 3x at 1,000 targets, 10-19x at 10,000 |
 
 A component link is not cleaned up when its target dies: the reader checks `world:contains` ([best-practices-entities](best-practices-entities.md)). If both columns apply, the pair's benefit must be worth its cost: measure.
@@ -82,7 +82,7 @@ for squad in world:query(Squad) do
 end
 ```
 
-Several values of one type on an entity: a tag relation with the component as target.
+Several values of one type on an entity: a tag relation with the component as target. Hooks and signals of the component do not run for these pairs; put them on the relation if the values need the same invariant.
 
 ```luau
 local Begin, End = jecs.tag(), jecs.tag()              -- before jecs.world()
@@ -122,7 +122,8 @@ world:set(car, Parts, { hull = hull, motor = motor })
 | `pair(R, staleHandle)` | A pair drops generations. Adding it raises while the slot is free; once reused, links to the new occupant with no error, even in a debug world | `world:contains` first |
 | Pairs on the one side pointing at many (`pair(Owns, item)` on the owner) | Each owner gets its own archetype holding all its pair ids, and passes through one more per item added: 100 owners with 30 items made 3,019 archetypes against 119 | Pair on each of the many |
 | A pair for a link nothing looks up in reverse | Fragmentation and structural retargets with no benefit | Entity in a component |
-| `Exclusive` or a cleanup trait added after first use | `Exclusive` is ignored. A cleanup trait applies only to pairs with targets first used afterwards | `jecs.meta` |
+| `Exclusive` or a cleanup trait added after first use | `Exclusive` is ignored while any pair of the relation exists. A cleanup trait applies only to pairs with targets first used afterwards | `jecs.meta` |
 | Expecting several rows from a wildcard query | One row per entity | `world:targets(e, R)` |
 | `world:set` on `pair(tagRelation, entity)` | Raises after the pair is already added, with no `OnAdd` | Make the relation a component |
-| `world:remove(e, pair(R, jecs.Wildcard))` | Raises when the entity holds such a pair; nothing is removed | Collect `world:targets(e, R)`, then remove each pair |
+| `world:remove(e, pair(R, jecs.Wildcard))`, or the same in `bulk_remove` | Raises when the entity holds such a pair; nothing is removed | Collect `world:targets(e, R)`, then remove each pair |
+| `world:add` or `world:set` with a wildcard pair | Debug world raises. Normal world: `add` stores a literal pair to the wildcard, `set` overwrites the value of the first target | Name the target |

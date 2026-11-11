@@ -561,7 +561,7 @@ do
 	local storedOnAdd
 	w:set(Health, jecs.OnAdd, function(e, _, value)
 		storedOnAdd = w:get(e, Health)
-		if value > 100 then
+		if value and value > 100 then
 			w:set(e, Health, 100)
 		end
 	end)
@@ -902,12 +902,40 @@ if FORK then
 	d:delete(child)
 	check("fork: apply skips an entity that a cascade earlier in the same apply deleted", pcall(d.apply, d) and not w:contains(child))
 
+	-- a plain id that is an entity is not guarded: only the debug world objects
 	local dw = jecs.world(true)
 	local DTag = dw:entity()
-	dw.deferred:set(dw:entity(), DTag, 1)
-	check("fork: apply runs a debug world's checks", raises(function()
+	dw.deferred:add(dw:entity(), DTag)
+	dw:delete(DTag)
+	check("fork: apply runs a debug world's checks (a queued tag that died raises)", raises(function()
 		dw.deferred:apply()
 	end))
+	local nw = jecs.world()
+	local NTag, holder = nw:entity(), nw:entity()
+	nw.deferred:add(holder, NTag)
+	nw:delete(NTag)
+	check("fork: on a normal world a queued tag that died is added as a dead id", pcall(nw.deferred.apply, nw.deferred) and nw:has(holder, NTag))
+
+	local rw = jecs.world()
+	local Rel, rUnit, rTarget = rw:entity(), rw:entity(), rw:entity()
+	rw.deferred:add(rUnit, pair(Rel, rTarget))
+	rw:delete(Rel)
+	rw.deferred:apply()
+	check("fork: a queued pair whose relation died is skipped", rw:target(rUnit, Rel) == nil and #rw:query(pair(jecs.Wildcard, rTarget)):archetypes() == 0)
+
+	local qw = jecs.world()
+	local QA = qw:component()
+	local qe = qw:entity()
+	local mine = jecs.deferred(qw)
+	local seenAtShared
+	qw:added(QA, function(entity)
+		mine:set(entity, QA, 2)
+	end)
+	qw.deferred:set(qe, QA, 1)
+	qw.deferred:apply()
+	seenAtShared = qw:get(qe, QA)
+	mine:apply()
+	check("fork: a change a listener queues on another queue waits for that queue", seenAtShared == 1 and qw:get(qe, QA) == 2)
 
 	local Loop = w:component()
 	local rounds = 0
@@ -1157,6 +1185,183 @@ if FORK then
 	check("debug world: any write to an entity from its OnRemove during a delete raises and abandons the delete", raises(function()
 		dbg:delete(victim)
 	end) and dbg:contains(victim))
+end
+
+print("second review findings")
+do
+	-- an entity that is being deleted, reached from a cascade callback
+	local w = jecs.world()
+	local Name, Count, Child = w:component(), w:component(), w:component()
+	local parent, bystander = w:entity(), w:entity()
+	w:set(parent, Name, "parent")
+	w:set(parent, Count, 1)
+	w:set(bystander, Name, "bystander")
+	w:set(bystander, Count, 100)
+	local alive, seen = nil, "unset"
+	w:set(Child, jecs.OnRemove, function(entity)
+		local p = w:parent(entity)
+		if p then
+			alive = w:contains(p)
+			seen = w:get(p, Name)
+			w:set(p, Count, 0)
+		end
+	end)
+	local child = w:entity()
+	w:set(child, Child, true)
+	w:add(child, pair(jecs.ChildOf, parent))
+	w:delete(parent)
+	if FORK then
+		check("fork: a parent reached from its child's OnRemove passes contains, reads nil, and a write to it touches nothing else", alive == true and seen == nil and w:get(bystander, Count) == 100 and count(w:query(Count)) == 1)
+	else
+		check("upstream: a parent reached from its child's OnRemove reads and overwrites another entity", alive == true and seen == "bystander" and w:get(bystander, Count) == 0)
+	end
+
+	-- hooks set late on a relation
+	local w2 = jecs.world()
+	local R = w2:component()
+	local holder, oldT, newT = w2:entity(), w2:entity(), w2:entity()
+	w2:set(holder, pair(R, oldT), 1)
+	local fired = {}
+	w2:set(R, jecs.OnAdd, function()
+		table.insert(fired, "add")
+	end)
+	w2:set(R, jecs.OnChange, function()
+		table.insert(fired, "change")
+	end)
+	w2:set(R, jecs.OnRemove, function()
+		table.insert(fired, "remove")
+	end)
+	w2:set(holder, pair(R, oldT), 2)
+	w2:remove(holder, pair(R, oldT))
+	local forOld = #fired
+	w2:set(holder, pair(R, newT), 1)
+	w2:set(holder, pair(R, newT), 2)
+	w2:remove(holder, pair(R, newT))
+	check("hooks set late on a relation: nothing for the pair in use; change and remove but no add for a new target", forOld == 0 and table.concat(fired, ",") == "change,remove")
+
+	-- Exclusive set late
+	local w3 = jecs.world()
+	local Ex = w3:entity()
+	local h3, a3, b3 = w3:entity(), w3:entity(), w3:entity()
+	w3:add(h3, pair(Ex, a3))
+	w3:add(Ex, jecs.Exclusive)
+	w3:add(h3, pair(Ex, b3))
+	local whileInUse = count(w3:targets(h3, Ex))
+	w3:delete(a3)
+	w3:delete(b3)
+	local c3, d3 = w3:entity(), w3:entity()
+	w3:add(h3, pair(Ex, c3))
+	w3:add(h3, pair(Ex, d3))
+	check("Exclusive set late is ignored while a pair of the relation exists, and honoured once they are all gone", whileInUse == 2 and count(w3:targets(h3, Ex)) == 1)
+
+	-- wildcard pairs passed to add and set on a normal world
+	local w4 = jecs.world()
+	local D, Tg = w4:component(), w4:entity()
+	local h4, t4a, t4b, bare = w4:entity(), w4:entity(), w4:entity(), w4:entity()
+	w4:set(h4, pair(D, t4a), "a")
+	w4:set(h4, pair(D, t4b), "b")
+	w4:set(h4, pair(D, jecs.Wildcard), "wild")
+	w4:add(bare, pair(Tg, jecs.Wildcard))
+	check("normal world: set with a wildcard pair overwrites one target's value; add stores a pair to the wildcard", (w4:get(h4, pair(D, t4a)) == "wild" or w4:get(h4, pair(D, t4b)) == "wild") and w4:target(bare, Tg) == jecs.Wildcard)
+	local dbg = jecs.world(true)
+	local DTg, dh = dbg:entity(), dbg:entity()
+	check("debug world: add with a wildcard pair raises", raises(function()
+		dbg:add(dh, pair(DTg, jecs.Wildcard))
+	end))
+	local Z = w4:entity()
+	local zt = w4:entity()
+	w4:add(h4, pair(Z, zt))
+	if FORK then
+		check("fork: bulk_remove with a wildcard pair raises and removes nothing", raises(function()
+			jecs.bulk_remove(w4, h4, { pair(D, jecs.Wildcard) })
+		end) and w4:has(h4, pair(Z, zt)) and w4:has(h4, pair(D, t4b)))
+	end
+
+	-- a component's hooks do not run for a pair that uses it as target
+	local w5 = jecs.world()
+	local Pos, Begin = w5:component(), w5:entity()
+	local hookRuns, signalRuns = 0, 0
+	w5:set(Pos, jecs.OnAdd, function()
+		hookRuns += 1
+	end)
+	w5:added(Pos, function()
+		signalRuns += 1
+	end)
+	local e5 = w5:entity()
+	w5:set(e5, pair(Begin, Pos), 1)
+	check("a component's hook and signal do not run for pair(tag, component)", hookRuns == 0 and signalRuns == 0 and w5:get(e5, pair(Begin, Pos)) == 1)
+
+	-- installing a second hook replaces the first
+	local w6 = jecs.world()
+	local H = w6:component()
+	local first, second = 0, 0
+	w6:set(H, jecs.OnAdd, function()
+		first += 1
+	end)
+	w6:set(H, jecs.OnAdd, function()
+		second += 1
+	end)
+	w6:set(w6:entity(), H, 1)
+	check("a second hook of the same kind replaces the first", first == 0 and second == 1)
+
+	-- set with nil
+	local e6 = w6:entity()
+	w6:set(e6, H, nil)
+	check("world:set with nil leaves has true and get nil", w6:has(e6, H) and w6:get(e6, H) == nil)
+
+	-- a clamp hook that tolerates world:add
+	local w7 = jecs.world()
+	local Health = w7:component()
+	local function cap(entity, id, value)
+		if value and value > 100 then
+			w7:set(entity, id, 100)
+		end
+	end
+	w7:set(Health, jecs.OnAdd, cap)
+	w7:set(Health, jecs.OnChange, cap)
+	local e7, e8 = w7:entity(), w7:entity()
+	w7:set(e7, Health, 500)
+	check("the clamp hook caps a value and survives world:add of the component", w7:get(e7, Health) == 100 and not raises(function()
+		w7:add(e8, Health)
+	end))
+
+	-- reads built from a dead handle whose slot was reused
+	local w8 = jecs.world()
+	local Rel8 = w8:entity()
+	local deadT = w8:entity()
+	w8:delete(deadT)
+	local newT8 = w8:entity()
+	local x = w8:entity()
+	w8:add(x, pair(Rel8, newT8))
+	check("a pair built from a dead handle answers for the entity that reused its slot", w8:get(deadT, Rel8) == nil and not w8:contains(deadT) and w8:has(x, pair(Rel8, deadT)) and count(w8:query(pair(Rel8, deadT))) == 1)
+
+	-- cleanup traits: the two extra rows
+	local w9 = jecs.world()
+	local OnDel, OnDelT = w9:entity(), w9:entity()
+	w9:add(OnDel, pair(jecs.OnDelete, jecs.Delete))
+	w9:add(OnDelT, pair(jecs.OnDeleteTarget, jecs.Delete))
+	local h9a, h9b, t9a, t9b = w9:entity(), w9:entity(), w9:entity(), w9:entity()
+	w9:add(h9a, pair(OnDel, t9a))
+	w9:add(h9b, pair(OnDelT, t9b))
+	w9:delete(t9a)
+	w9:delete(OnDelT)
+	check("(OnDelete, Delete) on a relation deletes holders when a target dies; deleting a relation with (OnDeleteTarget, Delete) deletes its holders", not w9:contains(h9a) and not w9:contains(h9b))
+
+	-- debug world: a hook of the entity's own raising during delete
+	if FORK then
+		local d2 = jecs.world(true)
+		local A2, B2 = d2:component(), d2:component()
+		d2:set(A2, jecs.OnRemove, function()
+			error("hook failed")
+		end)
+		local victim = d2:entity()
+		d2:set(victim, A2, 1)
+		check("fork debug world: after a hook aborts a delete the entity takes writes again", raises(function()
+			d2:delete(victim)
+		end) and not raises(function()
+			d2:set(victim, B2, 2)
+		end))
+	end
 end
 
 print("several worlds")
