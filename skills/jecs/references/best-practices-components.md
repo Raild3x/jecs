@@ -11,7 +11,7 @@ Start from the systems: list what each one reads and writes. Component boundarie
 | Separate data that changes every frame from data that rarely changes | Observers and change tracking on the rare part stop firing every frame |
 | Optional data gets its own component | Queries select on presence, so no `if` and no visit to entities without it |
 | If presence would flip every few frames, keep the component and switch a value | Each flip is a structural change |
-| Do not store what can be computed (speed from velocity) | Every writer of the source would have to update the copy, and one that forgets leaves it stale |
+| Compute what can be computed (speed from velocity). Store it only when it is costly or read by many systems each frame (a world transform in a hierarchy), with one system that owns the refresh | Every writer of the source would otherwise have to update the copy, and one that forgets leaves it stale |
 
 ## Values
 

@@ -71,4 +71,4 @@ Not checked: `bulk_insert`; `world:clear` on a dead handle; a pair built from a 
 | `world:exists` to validate | True for a dead handle | `world:contains` |
 | Write to a dead handle | Ignored (normal world), raises (debug) | `world:contains` first |
 | `world:entity(id)` | Can kill a live entity and give its components to the new id | `world:entity()` |
-| `world:range(a, b)` | Hands out ids above `a` (and above the current highest id) up to `b - 1`, then raises | Avoid |
+| `world:range(a, b)` | Hands out ids above `a` (and above the current highest id) up to `b - 1`, then raises | Only to keep a client's own ids above the ids it mirrors from a server |

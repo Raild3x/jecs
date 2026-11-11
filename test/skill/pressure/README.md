@@ -388,6 +388,40 @@ The cost table moved out of `best-practices-archetypes.md` into a new `reference
 - `slow/check.luau` was validated first: the untouched file passes 5 of 8 (the three model and static checks fail) and a reference answer passes 8 of 8.
 - While rewriting the table both lune benchmarks were re-run. One figure was stale: the deferred queue now costs about 1.7x a hand-written collect-then-apply and 100-125 ns per queued change, against 1.0-1.6x and 45 ns before the queue gained its pair checks. Corrected in `performance.md` and `feature-deferred.md`.
 
+## Results, 2026-11-11: practices from the original skills, and what agents do unprompted
+
+Three steps. An Opus agent listed the practices the two original skills (`ecs-design`, `jecs`) state that this one does not: 5 missing, 10 partly covered, 12 contradicted, 51 covered. A second Opus agent checked all 27 open entries, with a lune script against the fork's source for each factual claim: 3 true, 7 true with conditions, 6 false, 6 sound judgement, 4 weak judgement, 1 not testable without Studio. Then Sonnet agents at medium effort were given tasks that touch each surviving practice without naming it, with no skill and with the current skill. The tasks are not in the repo.
+
+What agents chose, one run per arm unless a count is given:
+
+| Practice | No skill | Current skill | Taught? |
+|---|---|---|---|
+| Systems built per world, for tests on fresh worlds | Constructor taking the world | Same | No |
+| Instances written late, only for changed entities, first value covered | Recording listener and a late flush | Same | No |
+| Derived value read by many systems | Cached, invalidated on change | Same, against the skill's "compute it" | Rule softened |
+| Spatial search | Hash grid | Hash grid | No |
+| Composition for enemy variants (3 runs per arm) | Components per capability, no type branches, 3 of 3 | 3 of 3 | No |
+| Declaring persisted components beside their definition (3 runs per arm) | A wrapper that fills a list, 3 of 3; exact write counts | Same, 3 of 3 | No: nobody tagged ids, and the list is simpler |
+| Five rules added to one step function (3 runs per arm) | One cached query per rule, 3 of 3 | 3 of 3 | No |
+| Deaths that other modules must hear about | Callbacks run inside the kill | A list later systems read | Already taught |
+| `world:cleanup()` in a 200-wave session | Called every wave, unmeasured | Left out, after a 296 s benchmark | Yes |
+| A structural change wanted from a remove hook, with no game loop | Added directly in the listener | Read the rule and broke it: "nothing would ever call `apply`" | Yes |
+
+The two that needed teaching, tested on copies of the skill:
+
+| Task | Arm | Runs | Changed the world in the hook, or patched world methods | Queued and exported a flush |
+|---|---|---|---|---|
+| Release owned objects; tag a unit that loses its shield | Skill at `fbbc2ea` | 5 | 4 | 1 |
+| | With the frame-order section | 5 | 0 | 5 |
+
+- Fisher's exact test on 4 of 5 against 0 of 5: p = 0.048. All ten files were read, not only the reports.
+- `cleanup()`: three runs with the new sentence left it out and cited the reason, in 60 to 89 s.
+- Applying the queue after every system: an empty `apply()` costs about 15 ns, and an `apply()` made while another loop runs made that loop visit 10,001 of 10,000 entities. With the rule written as "the frame's runner applies after every system", 2 of 3 runs wrote that loop and the third applied at the start and end of the step; with the earlier wording 0 of 3 applied between systems.
+
+Corrections to the skill that came from the verification, each with its script in the verifier's notes: `world:range` is no longer "avoid"; "fragmentation is not a reason to avoid a broad query" now stops at about 1,000 archetypes; the dirty-tag row gives the double visit as its reason; `cleanup()` says it forces archetypes to be rebuilt. One addition from a run, checked separately: ids added one at a time leave an archetype per partial combination (300 against 220 for the same 5,000 entities with `bulk_insert`).
+
+Not taken from the original skills: an entity per event, a dirty tag set from a hook, syncing instances from a hook, always preferring `bulk_insert`, children's remove hooks running first, and empty archetypes costing nothing all tested false on this fork. A system-count rule of thumb was judged too weak to teach.
+
 ## Tickets
 
 **tickets:** (1) `Game.stun(unit)` / `Game.unstun(unit)`; a stunned unit takes no poison in `Game.step`. (2) No unit's Health may exceed 100, whoever writes it; other modules call `Game.world:set` directly, so enforce it with a hook. (3) At the end of `Game.step` remove every unit with Health <= 0; followers of a removed unit stay alive. (4) `Game.countPoisoned()`, called every frame.

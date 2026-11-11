@@ -47,7 +47,7 @@ Who calls `apply`:
 | Code | Does | Because |
 |---|---|---|
 | A system that queues | Applies right after its own loop | The next system sees the result |
-| A hook or listener that queues | Nothing: add one fixed `apply` after the last system | It cannot apply mid-operation |
+| A hook or listener that queues | Nothing: the frame's runner applies after every system ([best-practices-systems](best-practices-systems.md)) | It cannot apply mid-operation |
 | A module called by code it does not control | Uses its own `jecs.deferred(world)` | Applying the shared queue would run other code's changes at an unexpected time |
 
 ## Mistakes

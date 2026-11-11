@@ -54,7 +54,8 @@ The switch is a structural change: every column of the entity is moved, so the c
 | | 10 entities among 1,000 archetypes | 4x |
 | A term in `world:query(...)`, vs the same id in `:with(...)` (lune) | tag or data component | 1.0-1.2x: choose by what the loop reads |
 | Broad query over fragmented storage, vs the same entities in one archetype (lune) | 10,000 entities in 100 archetypes | 1.0x |
-| | in 1,000 archetypes | 1.2x |
+| | in 1,000 archetypes | 1.2-1.5x |
+| | in 10,000 archetypes, one entity each | 2.4x cached, 3.6x uncached |
 | Cached query with emptied archetypes still in it (lune) | 1,000 empty archetypes | 1.1-1.2x until `world:cleanup()` |
 
 `:cached()` called inside a system is not in this table because it is not a speed choice: it installs two observers per call that stay until `:fini()`, so memory and every later archetype change get dearer each frame.

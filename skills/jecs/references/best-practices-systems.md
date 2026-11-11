@@ -14,7 +14,7 @@ Work done once, on demand, for an entity the caller already holds (`spawnNpc`, `
 | State another system must see lives in components or a singleton, not in a module variable | Any system can read the world; only one module can read its own locals |
 | Write with `world:set` | Direct column writes skip hooks and signals |
 | No yielding | Other code changes the world mid-loop. `task.spawn` slow work, mark the entity (`ComputingPath`) so it is not started twice, and feed the result back with a check that the entity is still alive |
-| Order by data flow: input, emit events, apply events, mark, delete | A reader placed before its writer acts on last frame's data |
+| One function runs the frame and calls every system in a fixed order (below) | A reader placed before its writer acts on last frame's data |
 
 ## Structural changes
 
@@ -34,7 +34,7 @@ local function despawnDead()
 end
 ```
 
-From a remove hook or listener, queue as well; one fixed `apply` after the last system picks it up.
+From a remove hook or listener, queue as well; the frame's runner applies it (below).
 
 ```luau
 world:removed(Shield, function(entity, _, deleted)
@@ -43,6 +43,36 @@ world:removed(Shield, function(entity, _, deleted)
 	end
 end)
 ```
+
+## Frame order
+
+JECS does not care what calls the frame (a `RunService` connection, a scheduler library's phases). The order is what matters:
+
+| Step | What runs | Because |
+|---|---|---|
+| 1. Input | Player and AI input written into components | Everything after reads this frame's intent |
+| 2. Simulate | Movement, combat, timers: they write values and emit events | Each reader comes after its writer |
+| 3. Apply events | The consumers that drain the event arrays | Every hit of the frame lands before anything is judged dead |
+| 4. Mark, then delete | Tag `Dead`; despawn | No system is left holding a handle that died earlier in its frame |
+| 5. Present | Instances and UI, written only for entities that changed ([change tracking](best-practices-change-tracking.md)) | It sees the frame's final values, once |
+
+The runner applies the shared queue after every system:
+
+```luau
+local systems = { readInput, move, applyDamage, markDead, despawnDead, present }
+
+local function step(dt: number)
+	for _, system in systems do
+		system(dt)
+		world.deferred:apply() -- about 15 ns when the queue is empty
+	end
+end
+```
+
+- What a hook or listener queued during one system is in the world before the next one runs. They cannot apply for themselves.
+- No system has to remember to apply, and none applies while another loop is still running: an `apply` in the middle of a loop makes that loop visit entities twice.
+
+A module with no frame of its own (it only installs hooks or listeners) still queues on `world.deferred`. It says in its header that the game's step applies the queue, and exports a `flush` that calls `apply` for tests and tools. Making the change directly in the remove callback is not a fallback: after `world:clear` the entity moves to the empty archetype and the change is lost, and during a delete a debug world raises.
 
 ## Marker tags
 

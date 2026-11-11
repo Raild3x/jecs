@@ -30,7 +30,7 @@ Written for the fork `raild3x/jecs`. Not covered: roblox-ts, replication, schedu
 | Holder merely points at another entity (AI target, last attacker) | Entity in a component; the system that reads it removes it once `world:contains` fails | Read per row and retargeted without moving the entity. Nothing else clears it when the target dies |
 | One-of-several state that systems select by, rarely changed | Exclusive pair | The query skips non-matching entities |
 | One-of-several state read in a loop over everyone, or changed often | Value component | A pair switch costs 4-38x a `set` |
-| Derived value (speed from velocity) | Compute it | A stored copy goes stale |
+| Derived value (speed from velocity) | Compute it; store only if costly or widely read, refreshed by one system | A stored copy goes stale when any writer forgets it |
 | Event handled this frame | Record in an array | No structural change per event |
 | Component's own invariant | Hook via `jecs.meta` | Runs for every writer |
 | Observer, runtime toggle | `world:added/changed/removed` | Many listeners, disconnectable |

@@ -67,7 +67,7 @@ Removal shows up as `world:query(pair(Previous, Health)):without(Health)`.
 
 | Mistake | Result | Instead |
 |---|---|---|
-| "Dirty" tag added and removed per change | Two structural changes per change | Recording table |
+| "Dirty" tag added from a hook or listener and removed after | The add moves the entity in the middle of the writer's loop, so a cached loop visits it twice; and 3.3x the cost of a recording table | Recording table |
 | Mutating a table value and expecting `changed` | Nothing fires | `world:set` again, or comparison |
 | Only `changed` connected | First value missed | Also `added` |
 | Acting inside the listener | Runs mid-write, once per `set` even when several happen in a frame | Record, act in a system |
