@@ -375,9 +375,10 @@ end
 do
 	local w = jecs.world()
 	local M = w:component()
-	local order = {}
-	w:set(M, jecs.OnRemove, function(e)
+	local order, flags = {}, {}
+	w:set(M, jecs.OnRemove, function(e, _, deleted)
 		table.insert(order, w:get(e, M))
+		table.insert(flags, deleted)
 	end)
 	local parent, child = w:entity(), w:entity()
 	w:set(parent, M, "parent")
@@ -385,6 +386,7 @@ do
 	w:add(child, pair(jecs.ChildOf, parent))
 	w:delete(parent)
 	check("on a cascade delete the parent's remove callback runs before the child's", order[1] == "parent" and order[2] == "child")
+	check("the deleted flag is true for an entity that a cascade deletes", flags[1] == true and flags[2] == true)
 end
 
 print("hooks and signals")
@@ -506,6 +508,67 @@ do
 		w:delete(e2)
 	end) and w:contains(e2))
 end
+do
+	-- a hook that corrects the value it was given
+	local w = jecs.world()
+	local Health = w:component()
+	local calls = {}
+	local storedOnAdd
+	w:set(Health, jecs.OnAdd, function(e, _, value)
+		storedOnAdd = w:get(e, Health)
+		if value > 100 then
+			w:set(e, Health, 100)
+		end
+	end)
+	w:set(Health, jecs.OnChange, function(e, _, value)
+		table.insert(calls, "hook " .. value)
+		if value > 100 then
+			w:set(e, Health, 100)
+		end
+	end)
+	w:changed(Health, function(_, _, value)
+		table.insert(calls, "listener " .. value)
+	end)
+	local e = w:entity()
+	w:set(e, Health, 300)
+	check("the value is stored before OnAdd runs, and a hook can correct it with world:set", storedOnAdd == 300 and w:get(e, Health) == 100)
+	table.clear(calls)
+	w:set(e, Health, 300)
+	check("a hook installed first runs before the signal listeners", calls[1] == "hook 300")
+	check("after a hook corrects the value, listeners receive the correction first and the original last", w:get(e, Health) == 100 and calls[3] == "listener 100" and calls[4] == "listener 300")
+end
+do
+	local dw = jecs.world(true)
+	local dead = dw:entity()
+	dw:delete(dead)
+	local raised = raises(function()
+		dw:delete(dead)
+	end)
+	if FORK then
+		check("fork: a debug world raises on world:delete of a dead handle", raised)
+	else
+		check("upstream: a debug world ignores world:delete of a dead handle", not raised)
+	end
+
+	local w = jecs.world()
+	local A, B = w:component(), w:component()
+	local es = {}
+	for i = 1, 6 do
+		es[i] = w:entity()
+		w:set(es[i], A, i)
+		if i > 3 then
+			w:set(es[i], B, i)
+		end
+	end
+	w:delete(es[1])
+	w:delete(es[5])
+	local cq = w:query(A):cached()
+	local total = 0
+	for _, archetype in cq:archetypes() do
+		total += #archetype.entities
+	end
+	check("summing #archetype.entities over a cached query counts its entities", total == 4 and count(cq) == 4)
+end
 if FORK then
 	local w = jecs.world(true)
 	local H = w:component()
@@ -533,8 +596,12 @@ do
 	w:add(e, pair(Likes, alice))
 	if FORK then
 		check("fork: a signal on a pair id fires for that pair only", ok and fired == 1)
-		w:remove(e, pair(Likes, alice))
+		local removed = 0
+		w:removed(pair(Likes, alice), function()
+			removed += 1
+		end)
 		w:delete(alice)
+		check("fork: a pair's removed listener runs for the removal that deleting its target causes", removed == 1)
 		local newcomer = w:entity()
 		w:add(e, pair(Likes, newcomer))
 		check("fork: it stops matching once another entity reuses the target's slot", jecs.ECS_ID(newcomer) == jecs.ECS_ID(alice) and fired == 1)
@@ -596,6 +663,13 @@ do
 	end) and raises(function()
 		dw:remove(ddead, DT)
 	end))
+	local dlive, dtarget = dw:entity(), dw:entity()
+	dw:add(dlive, pair(DT, dtarget))
+	check("a debug world raises on adding a dead entity as an id, and on removing a wildcard pair", raises(function()
+		dw:add(dlive, ddead)
+	end) and raises(function()
+		dw:remove(dlive, pair(DT, jecs.Wildcard))
+	end))
 
 	local Time = w:component()
 	w:set(Time, Time, 12.5)
@@ -622,6 +696,28 @@ do
 	check("world:each iterates the entities that have one id", count(w:each(A)) == 1)
 	check("world:children iterates the entities with a ChildOf pair", count(w:children(alice)) == 1 and w:parent(car) == alice)
 	check("a query on pair(Wildcard, target) finds every pair that targets it", count(w:query(pair(jecs.Wildcard, alice))) == 2)
+
+	check("query:has works on an uncached query", w:query(A):has(bob) and not w:query(A):has(car))
+	local Owns = w:component()
+	w:set(bob, pair(Owns, car), 7)
+	local yielded
+	for _, value in w:query(pair(Owns, car)) do
+		yielded = value
+	end
+	check("a pair term yields the pair's value", yielded == 7)
+
+	local E = w:component()
+	local lone = w:entity()
+	w:set(lone, A, 1)
+	w:set(lone, E, 1)
+	w:remove(lone, E)
+	local before = #w:query(E):cached():archetypes()
+	w:cleanup()
+	check("world:cleanup removes empty archetypes and cached queries stay correct", before == 1 and #w:query(E):cached():archetypes() == 0 and count(cq) == 2)
+
+	local Sig = w:component()
+	w:added(Sig, function() end)()
+	check("a signal's dispatcher stays installed after its last listener disconnects", w:get(Sig, jecs.OnAdd) ~= nil)
 
 	local id = pair(Likes, alice)
 	check("pair_first, pair_second and IS_PAIR take a pair id apart", jecs.IS_PAIR(id) and jecs.pair_first(w, id) == Likes and jecs.pair_second(w, id) == alice)
@@ -740,6 +836,33 @@ if FORK then
 	value.hp = 2
 	d:apply()
 	check("fork: a queued table value is captured by reference", w:get(e2, C).hp == 2)
+
+	local parent, child = w:entity(), w:entity()
+	w:add(child, pair(jecs.ChildOf, parent))
+	d:delete(parent)
+	d:set(child, C, value)
+	d:delete(child)
+	check("fork: apply skips an entity that a cascade earlier in the same apply deleted", pcall(d.apply, d) and not w:contains(child))
+
+	local dw = jecs.world(true)
+	local DTag = dw:entity()
+	dw.deferred:set(dw:entity(), DTag, 1)
+	check("fork: apply runs a debug world's checks", raises(function()
+		dw.deferred:apply()
+	end))
+
+	local Loop = w:component()
+	local rounds = 0
+	w:changed(Loop, function(entity)
+		rounds += 1
+		d:set(entity, Loop, rounds)
+	end)
+	local looper = w:entity()
+	w:set(looper, Loop, 0)
+	d:set(looper, Loop, 1)
+	check("fork: a listener that queues the change that invokes it raises instead of hanging", raises(function()
+		d:apply()
+	end) and rounds > 1)
 end
 
 -- Last, because it leaves the world it runs against unusable on the fork.

@@ -50,7 +50,7 @@ Each of these is a Flecs feature with no JECS equivalent. When a Flecs pattern d
 | `in` / `out` annotations and built-in change detection | `changed` signals, or a dirty tag that a system sets and clears. |
 | Entity lookup by name or path | Keep your own table from name to entity. |
 | Modules, the REST API, the explorer, timers, the meta addon | Plain Luau modules. Debugging tools are separate projects. |
-| Bulk and batched creation APIs | `jecs.bulk_insert` for one entity, with the limits in the API reference. |
+| Bulk and batched creation APIs | `jecs.bulk_insert` for one entity, with the limits in [advanced-api.md](advanced-api.md). |
 | `Symmetric`, `Transitive`, `Traversable`, `With`, `OneOf` and other relationship traits | Only `Exclusive` and the cleanup traits exist. Enforce anything else in the code that adds the pair. |
 | Multithreading and staged worlds | One world, one thread. Parallel Luau needs its own copy of the data. |
 

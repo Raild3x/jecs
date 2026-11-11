@@ -202,6 +202,40 @@ do
 	jecs.bulk_insert(world, e, { Speed, Armor, Stunned } :: { any }, { 16, 5 })
 	check("bulk_insert: spawns a fresh entity with plain components and tags", world:get(e, Speed) == 16 and world:get(e, Armor) == 5 and world:has(e, Stunned))
 end
+do
+	-- change tracking: a listener records which entities changed, a system drains the set
+	local changedHealth: { [jecs.Entity]: true } = {}
+	local stop = world:changed(Health, function(entity)
+		changedHealth[entity] = true
+	end)
+	local a, b = world:entity(), world:entity()
+	world:set(a, Health, 10) -- the first set is an add, not a change
+	world:set(b, Health, 10)
+	world:set(a, Health, 9)
+	world:set(a, Health, 8)
+	local drained = 0
+	for entity in changedHealth do
+		if world:contains(entity) then
+			drained += 1
+		end
+	end
+	table.clear(changedHealth)
+	stop()
+	check("change tracking: several sets in a frame leave one entry per entity", drained == 1)
+
+	-- change tracking without a listener: compare against the value last handled
+	local Shown = world:component<<number>>()
+	world:set(a, Shown, 8)
+	world:set(b, Shown, 0)
+	local redrawn = 0
+	for entity, health, shown in world:query(Health, Shown) do
+		if health ~= shown then
+			redrawn += 1
+			world:set(entity, Shown, health) -- already has Shown: not structural
+		end
+	end
+	check("change tracking: comparing with a stored copy finds what differs", redrawn == 1 and world:get(b, Shown) == 10)
+end
 if FORK then
 	local deferred = (world :: any).deferred
 	local Shield = world:component<<number>>()

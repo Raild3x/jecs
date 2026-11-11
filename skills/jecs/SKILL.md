@@ -1,70 +1,88 @@
 ---
 name: jecs
-description: Use when writing, reviewing or debugging Luau that uses JECS (worlds, components, tags, queries, pairs, hooks, signals, deferred changes), when designing components, entities or systems for a Roblox game built on JECS, or when carrying a Flecs pattern over to JECS.
+description: Use when writing, reviewing or debugging Luau that uses JECS (worlds, components, tags, queries, pairs, hooks, signals, deferred changes), when designing ECS components, entities or systems for a Roblox game, when a JECS hook never fires, a query yields nothing or a loop skips entities, or when carrying a Flecs pattern over to JECS.
 ---
 
 # JECS
 
-JECS is an archetype entity-component-system for Luau. These rules are written for the fork `raild3x/jecs`. Each rule gives its reason, because most of them guard against a failure that is silent.
+## Overview
+
+JECS is an archetype entity-component-system for Luau. Most mistakes with it fail silently: a late hook is ignored, a stored query yields nothing, a loop skips entities.
+
+**Core principle: configure every id before the world exists, and change structure only after a loop ends.**
+
+Written for the fork `raild3x/jecs`. Behaviour only the fork has is marked **fork**.
 
 ## Before writing code
 
-1. **Find which JECS the project uses.** Read `wally.toml` for `raild3x/jecs` or `ukendio/jecs`. Rules marked **fork** rely on behaviour only `raild3x/jecs` has; on `ukendio/jecs` use the stated alternative.
-2. **Confirm the place holds one copy of JECS.** Search for a second `jecs` module (a vendored copy, or a package that bundles its own). *Why:* ids are allocated from state inside the module, so two copies hand out the same ids for different things and corrupt each other.
-3. **Write plain Luau under `--!strict`** with explicit type instantiation: `jecs.component<<number>>()`, `world:component<<Vector3>>()`. *Why:* the id carries its value type, so `world:get` and query loops come back typed.
+1. **Read `wally.toml` for `raild3x/jecs` or `ukendio/jecs`.** On `ukendio/jecs` the fork features are absent: use the alternatives in [core-basics](references/core-basics.md).
+2. **Confirm the place holds one copy of JECS.** *Why:* ids come from state inside the module, so two copies hand out the same ids for different things.
+3. **Write `--!strict` Luau with explicit type instantiation:** `jecs.component<<number>>()`. *Why:* the id carries its value type, so `world:get` and query loops come back typed.
+4. **Develop on `jecs.world(true)`, ship on `jecs.world()`**, for example `jecs.world(RunService:IsStudio())`. *Why:* the debug world raises where a normal world stays silent, and makes `world:set` about 3.7 times slower.
 
-## Rules
+## Quick reference
 
-### Setup
+| Need | Use | Why |
+|---|---|---|
+| Data on an entity | `jecs.component<<T>>()`, `world:set` | A typed column. |
+| A yes/no fact | `jecs.tag()`, `world:add` | `world:component()` always takes storage and one of 256 ids. |
+| One of several states | One value component | Switching an exclusive pair costs 4 to 38 times a `set`. |
+| A per-frame system picks a small share of thousands | Exclusive pair | The query visits only the matches. |
+| Holder belongs to target, targets few | Pair on the many side, with a cleanup trait | Reverse lookup and cascade delete. |
+| Holder points at a target | The entity in a component; a dead target reads as none | No archetype per target. |
+| "Who points at me", many targets | A table built once per frame | Pairs fragment; scans repeat. |
+| An event handled this frame | A record in a plain array, cleared by the last system | A "pending" component keeps only the last event. |
+| A component's own invariant | A hook through `jecs.meta` | Hooks are read once, at first use. |
+| An outside observer, or a runtime toggle | `world:added`, `world:changed`, `world:removed` | Signals connect and disconnect at any time. |
+| A structural change from a loop, hook or listener | `world.deferred`, then `apply()` (**fork**); else collect, then apply | See the first mistakes below. |
+| Other systems must skip a doomed entity | A marker tag and `:without(Dead)` | A queued delete is invisible until applied. |
 
-- **Define every id in one module, configure it there, then create the world.** `jecs.component<<T>>()` for data, `jecs.tag()` for tags, `jecs.meta(id, ...)` for names, traits and hooks, and only then `jecs.world()`. *Why:* hooks and traits are read once, when an id is first used, and anything configured later is ignored without an error. A `jecs.component()` or `jecs.tag()` call made after a world exists returns an id that world has already handed out (**fork** raises; upstream stays silent).
-- **Data is a component, a yes/no fact is a tag.** Tags come from `jecs.tag()` or `world:entity()`. `world:component()` always makes a data component. *Why:* a component takes a storage column and one of only 256 component ids. `world:set` with a value on a tag raises, and `world:add` of a data component leaves `get` returning nil.
-- **Develop on `jecs.world(true)`, ship on `jecs.world()`**, for example `jecs.world(RunService:IsStudio())`. *Why:* a normal world ignores operations on dead entities without an error. The debug world raises on those, and on the **fork** also on late hooks, late traits, late registration and structural changes inside a remove hook. It makes `world:set` about 3.7 times slower.
+A **structural change** is `add`, `remove`, `delete`, `clear`, or `set` of a component the entity lacks. `set` of a component it already has is not.
 
-### Hooks, signals and systems
+## Common mistakes
 
-- **Install hooks only through `jecs.meta` at definition. Outside observers use `world:added`, `world:changed` and `world:removed`. Gameplay logic goes in systems.** *Why:* `world:set(id, jecs.OnAdd, fn)` at runtime is ignored once the id is in use, and when the id already has signal listeners it either silences them or is ignored itself.
-- **A remove hook or listener only reads and releases.** Queue any structural change it wants on `world.deferred` (**fork**). Keep every hook and listener too simple to raise. *Why:* the maintainer has said structural changes inside a remove hook are undefined behaviour. A listener that raises aborts the operation half way: the value is already written, or the entity being deleted stays alive.
-- **Treat `OnChange` as "set was called".** *Why:* it fires when the new value equals the old one, and never when a table value is mutated in place.
-
-### Structural changes
-
-A **structural change** moves an entity between archetypes: `add`, `remove`, `delete`, `clear`, or `set` of a component the entity does not have yet. `world:set` of a component the entity already has is not structural.
-
-- **Make structural changes after the loop, never inside it.** Inside a `for ... in` over a query, `world:each` or `world:children`, queue them on `world.deferred` and call `world.deferred:apply()` after the loop (**fork**), or collect entities into a table and change them after the loop. *Why:* deleting only the entity being visited skipped live entities in about 30% of randomised trials when that entity was a pair target, and adding to the visited entity can visit it twice.
-- **When another system runs between deciding an entity must go and deleting it, mark the entity with a tag** such as `Dead`, have those systems filter `:without(Dead)`, and let one system delete the marked ones. *Why:* a queued delete is invisible to every other system until it is applied. A system that decides and deletes in one go needs no tag.
-
-### Queries
-
-- **Give every filter id in one call:** `:with(A, B)`, `:without(C, D)`. *Why:* on upstream a second `:with` replaces the first.
-- **Call `:cached()` once, at module scope, for a query that runs every frame.** *Why:* each call registers two observers that stay until `:fini()`.
-- **Iterate an uncached query where it is built.** *Why:* stored in a variable it yields nothing the second time.
-- **Give a nested loop its own query.** *Why:* iterating a query inside its own loop ends the outer loop early.
-- **Sort or key results yourself when order matters.** *Why:* iteration order follows archetype layout and differs between runs.
-- **`world:has` and `world:get` take at most four ids.** Queries take more terms.
-
-### Entities and handles
-
-- **Check a stored entity with `world:contains` before writing to it or building a pair from it.** A read needs no check: `world:get` and `world:has` return nil and false for a dead handle. *Why:* a normal world ignores a write to a dead entity without an error, and for a deleted entity `contains` is false while `exists` stays true. A deleted slot is reused, and the old handle value itself is issued again after 16,777,216 reuses of one slot (**fork**; 65,536 on upstream).
-- **Create entities with `world:entity()` and no argument, and leave `world:range` alone.** *Why:* in both libraries `world:entity(id)` can corrupt the entity index (one id issued to two entities, a live entity killed without an error), and `world:range` raises on the second entity created inside its own range.
-
-### Decision guide
-
-- **State that is one of several values: a value component.** A tag for an independent yes/no. An exclusive pair only where a per-frame system selects a minority state among thousands of entities, or where a measurement asks for it. *Why:* switching an exclusive pair costs 5 to 38 times a `set` and is a structural change.
-- **A link where the holder belongs to the target: a pair on the many side pointing at the few, with a cleanup trait.** A link that merely points: the entity stored in a component, with a dead target read as no target. Keep targets times holder shapes in the hundreds. *Why:* every distinct target creates archetypes, and at 10,000 targets building the world is 10 to 19 times slower and deleting the targets far worse.
-- **Build a pair only from a handle just checked with `world:contains`.** *Why:* a pair keeps no generation, so a stale handle links to whatever entity now sits in that slot, even in a debug world.
-- **An event: a helper function that appends to a plain array.** Systems that read it run after the systems that emit, and one named system clears it last. Use a tag on the target only for a fact that is the same however often it is stated, and an entity only for something that outlives the frame. *Why:* with a "pending" component a second event in the same frame overwrites the first.
-- **"Who points at me" over many changing targets: a table built on first use in a frame, inside the system that needs it, and dropped at frame end.** *Why:* pairs would create an archetype per target, and a scan per lookup reads every holder each time.
-- **`jecs.bulk_insert` only to spawn a fresh entity with about eight or more plain components and tags, where measured.** *Why:* it is slower than `set` at three components and 1.57 times faster at twelve, it bypasses `Exclusive` and every debug check, and it stays silent when given fewer values than ids.
-- **A signal on one pair, `world:added(pair(R, target), fn)`, is fork only.** Disconnect it when its target dies and keep them to a handful per relation. For many targets connect one listener to `R` and look the pair id up in a table. *Why:* it is registered on the relation, so every event on `R` runs every pair listener's filter: an add costs four times as much with 100 of them.
+| Mistake | What happens | Instead |
+|---|---|---|
+| Structural change inside a loop over a query, `world:each` or `world:children` | Live entities are skipped (about 30% of trials when the deleted entity is a pair target) or visited twice. | Make it after the loop. |
+| Structural change, or code that can raise, in a remove hook or listener | Undefined behaviour. A raise aborts half way: the value is stored, or the entity stays alive. | Queue it on `world.deferred`. Keep callbacks trivial. |
+| `jecs.component()`, `jecs.tag()` or `jecs.meta` after `jecs.world()` | The id collides with one the world handed out (**fork** raises), and `meta` never reaches that world. | Define and configure every id in one module, then create the world. |
+| `world:set(id, jecs.OnAdd, fn)` or a trait added at runtime | Ignored once the id is in use. Over signal listeners it silences them or is ignored. | `jecs.meta` at definition, or a signal. |
+| `:with(A):with(B)` | On upstream only the last call applies. | `:with(A, B)` |
+| `:cached()` inside a function that runs repeatedly | Each call registers two observers that stay until `:fini()`. | Once, at module scope. |
+| An uncached query kept in a variable | It yields nothing the second time. | Iterate it where it is built, or cache it. |
+| A query iterated inside its own loop | The outer loop ends early. | A separate query for the inner loop. |
+| `world:component()` as a marker, `set` on a tag, `add` of a data component | A wasted column and id; a raise; a nil value. | `jecs.tag()`; `add` for tags, `set` for data. |
+| `world:has` or `world:get` with five ids | Raises. | Two calls. |
+| `pair(R, handle)` from a stored handle | Links to the slot's new occupant, even in a debug world. | `world:contains(handle)` first. |
+| Writing through an unchecked handle, or checking with `world:exists` | A normal world ignores the write; `exists` stays true for a dead entity. | `world:contains`. Reads need no check. |
+| Treating `OnChange` as "the value differs" | It fires on an equal value, never for an in-place table mutation, and not for the first `set`. | [change tracking](references/best-practices-change-tracking.md) |
+| `world:entity(id)`, `world:range` | Can corrupt the entity index; `range` raises. | `world:entity()` |
+| Relying on iteration order | It differs between runs. | Sort the results. |
+| `jecs.bulk_insert` for small entities or exclusive pairs | Slower below six components; bypasses `Exclusive` and debug checks. | `set` and `add`; bulk only when measured. |
+| Many pair listeners on one relation (**fork**) | Every event on it runs each one. | One listener on the relation and a table lookup. |
 
 ## References
 
 | Read | When |
 |---|---|
-| [references/api.md](references/api.md) | Calling any JECS function: exact signatures, what each call does on tags, pairs and dead entities, and the fork and upstream differences in one table. |
-| [references/design.md](references/design.md) | Deciding how to model something, or writing a system: tested code for each pattern above, and the measured cost of each alternative. |
-| [references/flecs.md](references/flecs.md) | The user names Flecs or brings a Flecs pattern: what carries over and what JECS lacks. |
-| [verify/](verify/) | A rule here seems wrong, or JECS was updated: copy the project's `jecs.luau` into `verify/` and run `lune run facts.luau` and `lune run examples.luau`. A failure names the fact that changed. Inside the JECS repository itself, `lune run run.luau` from `verify/` does both against `src/jecs.luau`. |
+| **Core** | |
+| [core-basics](references/core-basics.md) | Creating a world, ids, entities, components; what a call does on a tag or a dead entity; the fork and upstream differences. |
+| [core-queries](references/core-queries.md) | Writing a query, filter, cached query or pair term. |
+| **Features** | |
+| [feature-pairs](references/feature-pairs.md) | Relationships, targets, wildcards, `ChildOf`. |
+| [feature-cleanup-traits](references/feature-cleanup-traits.md) | What happens to holders when an id or target is deleted. |
+| [feature-hooks](references/feature-hooks.md) | `OnAdd`, `OnChange`, `OnRemove`: when each runs and with what. |
+| [feature-signals](references/feature-signals.md) | Listeners, hook or signal, signals on one pair. |
+| [feature-deferred](references/feature-deferred.md) | `world.deferred`: semantics, who calls `apply`. |
+| **Best practices** | |
+| [best-practices-components](references/best-practices-components.md) | Splitting data, tag or value or pair, the components module. |
+| [best-practices-entities](references/best-practices-entities.md) | What deserves an entity, handles, links between entities. |
+| [best-practices-systems](references/best-practices-systems.md) | Writing a system, changing structure from a loop, marker tags, events. |
+| [best-practices-change-tracking](references/best-practices-change-tracking.md) | Finding what changed since last frame. |
+| [best-practices-archetypes](references/best-practices-archetypes.md) | Why a choice is fast or slow: the archetype model and the measured cost table. |
+| **Advanced** | |
+| [advanced-api](references/advanced-api.md) | `bulk_insert`, more than 256 components, what the debug world checks. |
+| [flecs](references/flecs.md) | The user names Flecs: what carries over and what JECS lacks. |
+| [verify/](verify/) | A rule seems wrong, or JECS was updated: copy the project's `jecs.luau` into `verify/` and run `lune run facts.luau` and `lune run examples.luau`. Inside the JECS repository, `lune run run.luau` does both. |
 
 Rewritten from the `jecs` and `ecs-design` skills by christopher-buss.
