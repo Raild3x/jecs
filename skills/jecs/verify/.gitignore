@@ -1,2 +1,4 @@
 # the project's copy of the library, placed here to run the checks
 jecs.luau
+# the root .gitignore ignores every rokit.toml; this one is needed for lune
+!rokit.toml

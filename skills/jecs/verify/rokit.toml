@@ -1,0 +1,4 @@
+# lune runs the checks in this folder: lune run run.luau
+
+[tools]
+lune = "lune-org/lune@0.11.1"
