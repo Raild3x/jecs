@@ -2464,18 +2464,18 @@ TEST("signals on a pair id", function()
 		CHECK(removed == 0)
 	end
 
-	do CASE "should error for pair(Wildcard, target) and for a pair whose relation or target is not alive"
-		local world = jecs.world()
-		local Likes = world:entity()
-		local alice, dead = world:entity(), world:entity()
-		world:delete(dead)
-
-		for _, signal in { "added", "changed", "removed" } do
+	for _, signal in { "added", "changed", "removed" } do
+		do CASE(`world:{signal} should error for pair(Wildcard, target) and for a pair whose relation or target is not alive`)
+			local world = jecs.world()
+			local Likes = world:entity()
+			local alice, dead = world:entity(), world:entity()
+			world:delete(dead)
 			local connect = (world :: any)[signal]
-			CHECK(not pcall(connect, world, pair(jecs.Wildcard, alice), function() end))
-			CHECK(not pcall(connect, world, pair(Likes, dead), function() end))
-			CHECK(not pcall(connect, world, pair(dead, alice), function() end))
-			CHECK(not pcall(connect, world, pair(dead, jecs.Wildcard), function() end))
+
+			CHECK_EXPECT_ERR(connect, world, pair(jecs.Wildcard, alice), function() end)
+			CHECK_EXPECT_ERR(connect, world, pair(Likes, dead), function() end)
+			CHECK_EXPECT_ERR(connect, world, pair(dead, alice), function() end)
+			CHECK_EXPECT_ERR(connect, world, pair(dead, jecs.Wildcard), function() end)
 		end
 	end
 end)
@@ -2622,7 +2622,7 @@ TEST("world.deferred", function()
 		world:set(e, A, 0)
 		d:set(e, A, 1)
 
-		CHECK(not pcall(d.apply, d))
+		CHECK_EXPECT_ERR(d.apply, d)
 		CHECK(fired > 1)
 	end
 
@@ -2678,7 +2678,43 @@ TEST("world.deferred", function()
 		local e = world:entity()
 
 		world.deferred:set(e, Tag, 1)
-		CHECK(not pcall(world.deferred.apply, world.deferred))
+		CHECK_EXPECT_ERR(world.deferred.apply, world.deferred)
+	end
+
+	do CASE "should apply through a world method that was replaced after the world was created"
+		local world = jecs.world()
+		local e = world:entity()
+
+		local seen = 0
+		local delete = world.delete
+		world.delete = function(self, entity)
+			seen += 1
+			return delete(self, entity)
+		end :: any
+
+		world.deferred:delete(e)
+		world.deferred:apply()
+
+		CHECK(seen == 1)
+		CHECK(not world:contains(e))
+	end
+
+	do CASE "should queue a set whose value is nil like any other set"
+		local world = jecs.world()
+		local A = world:component() :: Id<number?>
+		local B = world:component() :: Id<number>
+		local e = world:entity()
+		local d = world.deferred
+
+		d:set(e, A, nil)
+		for i = 1, 100 do
+			d:set(e, B, i)
+		end
+		d:apply()
+
+		CHECK(world:has(e, A))
+		CHECK(world:get(e, A) == nil)
+		CHECK(world:get(e, B) == 100)
 	end
 end)
 

@@ -227,7 +227,7 @@ type deferred = {
 
 --- A queue of changes to a world that are held back until `apply`.
 --- Changes apply in the order they were queued, and a change whose entity is
---- no longer alive by then is skipped. It is the equivalent of a FLECS stage
+--- no longer alive by then is skipped. It is the equivalent of a Flecs stage
 --- and its merge.
 export type Deferred = {
 	--- Queues `world:add`
@@ -2818,18 +2818,15 @@ local DEFERRED_SET = 2
 local DEFERRED_REMOVE = 3
 local DEFERRED_DELETE = 4
 
--- A queue of changes to a world that are held back until `apply`, the
--- equivalent of a FLECS stage and its merge. `world.deferred` is the queue
--- every world is created with, and `jecs.deferred(world)` makes a separate one.
+-- `world.deferred` is the queue every world is created with, and
+-- `jecs.deferred(world)` makes a separate one. See the `Deferred` type.
 local function deferred_new(world: world): deferred
-	local contains, add, set, remove, delete =
-		world.contains, world.add, world.set, world.remove, world.delete
-
 	-- Four slots per change: kind, entity, id and value. A slot that is unused
-	-- holds false, because nil would leave holes that move the array into the
-	-- hash part of the table.
+	-- holds false and a nil value is stored as NULL, because nil would leave
+	-- holes that move the array into the hash part of the table.
 	local ops = {} :: { any }
 	local n = 0
+	-- The table of the last batch that was applied, kept to be filled again
 	local spare = nil :: { any }?
 
 	local function push(kind: number, entity: i53, id: any, value: any)
@@ -2852,22 +2849,27 @@ local function deferred_new(world: world): deferred
 		local i = 1
 		local ok, err = pcall(function()
 			while i <= count do
-				local kind, entity = batch[i], batch[i + 1]
+				local kind, entity, id, value = batch[i], batch[i + 1], batch[i + 2], batch[i + 3]
+				-- Advanced before the change is made, so that one that raises
+				-- is not kept
 				i += 4
-				-- The entity may have been deleted since the change was queued
-				if contains(world, entity) then
+				-- The entity may have been deleted since the change was queued.
+				-- The methods are looked up on the world for every change,
+				-- because debug worlds and modules replace them.
+				if world:contains(entity) then
 					if kind == DEFERRED_ADD then
-						add(world, entity, batch[i - 2])
+						world:add(entity, id)
 					elseif kind == DEFERRED_SET then
-						set(world, entity, batch[i - 2], batch[i - 1])
+						world:set(entity, id, if value == NULL then nil else value)
 					elseif kind == DEFERRED_REMOVE then
-						remove(world, entity, batch[i - 2])
+						world:remove(entity, id)
 					else
-						delete(world, entity)
+						world:delete(entity)
 					end
 				end
 				-- Changes that a listener queued while this one was applied
-				-- run before the next one
+				-- run before the next one. A chain of them nests one call deep
+				-- for each link, so an endless chain raises a stack overflow.
 				if n > 0 then
 					apply()
 				end
@@ -2889,7 +2891,7 @@ local function deferred_new(world: world): deferred
 			push(DEFERRED_ADD, entity, id, false)
 		end,
 		set = function(_, entity: i53, id: i53, value: any)
-			push(DEFERRED_SET, entity, id, value)
+			push(DEFERRED_SET, entity, id, if value == nil then NULL else value)
 		end,
 		remove = function(_, entity: i53, id: i53)
 			push(DEFERRED_REMOVE, entity, id, false)
@@ -4197,7 +4199,6 @@ local function world_new(DEBUG: boolean?)
 		world.set = world_set_checked
 	end
 
-	-- Created after the debug wrappers so that it applies through them
 	world.deferred = deferred_new(world)
 
 	for i = 1, EcsRest do

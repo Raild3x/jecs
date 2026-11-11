@@ -305,14 +305,14 @@ export class World {
 }
 
 /**
- * A queue of changes to a world that are held back until `apply`, the equivalent of a FLECS
+ * A queue of changes to a world that are held back until `apply`, the equivalent of a Flecs
  * stage and its merge. Changes apply in the order they were queued, and a change whose entity
- * is no longer alive by then is skipped.
+ * is no longer alive by then is skipped. The four methods take the arguments of the world's.
  */
 export interface Deferred {
-	add(entity: Entity, id: Id): void;
-	set<T>(entity: Entity, id: Id<T>, value: T): void;
-	remove(entity: Entity, id: Id): void;
+	add<C>(entity: Entity, component: TagDiscriminator extends InferComponent<C> ? C : Id<TagDiscriminator>): void;
+	set<E extends Id<unknown>>(entity: Entity, component: E, value: InferComponent<E>): void;
+	remove(entity: Entity, component: Id): void;
 	delete(entity: Entity): void;
 	/**
 	 * Applies the queued changes and empties the queue. A change that a listener queues while
