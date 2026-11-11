@@ -12,9 +12,6 @@ Start from the systems: list what each one reads and writes. Component boundarie
 | Optional data gets its own component | Queries select on presence, so no `if` and no visit to entities without it |
 | If presence would flip every few frames, keep the component and switch a value | Each flip is a structural change |
 | Do not store what can be computed (speed from velocity) | Every writer of the source would have to update the copy, and one that forgets leaves it stale |
-| Cache a derived value only when it is read far more often than its source changes and is costly to compute | Then one system owns the cache and recomputes it; nothing else writes it |
-
-Composition, not inheritance: no base "Character" component. A player is the entity that has `Health`, `Position` and `Inventory`; an enemy has `Health`, `Position` and `Brain`. Systems work on whatever has the components they name.
 
 ## Values
 
@@ -67,6 +64,5 @@ With ids and world in separate modules, the world module requires the ids module
 | God component | Every system loads all of it; wide entities make structural changes dearer | Split by reader |
 | One component per primitive field | Queries of five terms for one concept | Combine what travels together |
 | A tag per state (`Idle`, `Walking`) | Two structural changes per switch; invalid combinations possible | Value component, or exclusive pair if selected on |
-| A stored copy of derived data | Stale when one writer forgets it | Compute on read |
 | Entity stored in a component for something that belongs to it | No reverse lookup, no cleanup | Pair |
 | `world:component()` for a marker | A column and one of 256 ids | `jecs.tag()` |

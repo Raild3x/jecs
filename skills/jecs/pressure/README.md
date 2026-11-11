@@ -288,6 +288,44 @@ Typing: `verify/types.luau` under `luau-lsp analyze` 1.70.1 confirms SKILL.md. `
 
 Studio: not re-measured. Studio's MCP server answered with no open instance.
 
+## Results, 2026-11-11: which reference files agents open
+
+Sonnet at medium effort, two runs of each fork scenario (16 runs per round), against a copy of the skill holding only `SKILL.md` and `references/`. Reads were taken from the subagent transcripts and each run's own list; agents often read several files in one shell command, so the two were merged. Not graded: hidden checks only, and the design answers read by hand.
+
+Round 1 is the skill at `284a592`. Round 2 added a 35-line module example to SKILL.md (ids, `jecs.meta`, world, cached query, deferred delete, count by archetype) and cut the system-or-function table, the composition paragraph and two derived-data rows.
+
+| Round | Hidden checks | Reference files opened per run | Tokens per run | Time per run |
+|---|---|---|---|---|
+| 1 | all pass (12 of 12 runs that have a check) | 4.4 | 62,789 | 53 s |
+| 2 | all pass (12 of 12) | 3.8 | 61,865 | 47 s |
+
+Runs that opened each file, of 16:
+
+| File | Round 1 | Round 2 |
+|---|---|---|
+| feature-cleanup-traits | 11 | 10 |
+| core-queries | 10 | 10 |
+| feature-pairs | 9 | 7 |
+| feature-deferred | 8 | 6 |
+| best-practices-entities | 6 | 5 |
+| core-basics | 5 | 3 |
+| best-practices-systems | 5 | 4 |
+| feature-hooks | 4 | 4 |
+| feature-signals | 4 | 5 |
+| best-practices-change-tracking | 4 | 3 |
+| best-practices-components | 3 | 4 |
+| best-practices-queries | 1 | 0 |
+| best-practices-archetypes, advanced-api | 0 | 0 |
+| flecs, upstream-differences | 0 | 0 (no scenario calls for them) |
+
+- No run worked from SKILL.md alone. The commonest reasons to open a file were one snippet each: the default when a pair's target is deleted, counting through `archetypes()`, the `deferred` loop, `Exclusive`.
+- The example did not pay for itself: tokens moved 1.5%, inside the spread between two runs of one scenario. One round-2 design run opened neither best-practices-entities nor best-practices-systems and gave 20,000 grass entities and a drain by index, the two answers those files exist to prevent; the earlier design runs on the rewritten skill, round 1's two included, had both right. One run is not a rate, but the example was removed: it bought nothing measurable and may make SKILL.md look sufficient.
+- The cuts stayed. All four design runs across both rounds made `spawnNpc` a plain function and computed speed, as the no-skill run had.
+- The two rules that design run missed (what deserves an entity; swap the array before draining) live only in reference files. Promoting them to the quick reference is the next thing to test.
+- Several runs left `jecs.world()` without the debug flag "to keep the diff small".
+
+Tooling for this is not in the repo: a project builder and a transcript reader (`setup.sh`, `nav_reads.py`).
+
 ## Tickets
 
 **tickets:** (1) `Game.stun(unit)` / `Game.unstun(unit)`; a stunned unit takes no poison in `Game.step`. (2) No unit's Health may exceed 100, whoever writes it; other modules call `Game.world:set` directly, so enforce it with a hook. (3) At the end of `Game.step` remove every unit with Health <= 0; followers of a removed unit stay alive. (4) `Game.countPoisoned()`, called every frame.

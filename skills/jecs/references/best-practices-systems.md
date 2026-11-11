@@ -2,15 +2,7 @@
 
 A system is a function: one query, one job. JECS has no scheduler; the game calls systems in a fixed order. A phase is a naming convention.
 
-## System or plain function
-
-| Make it a system when | Make it a plain function when |
-|---|---|
-| It processes every entity matching a query | It acts on one entity the caller already holds |
-| It runs every frame or on a fixed step | It runs once, on demand (`spawnNpc`, `equip`) |
-| Its place in the frame order matters | Order does not matter |
-
-A "spawn system" that polls for something to spawn is a function call with a frame of delay. Keep spawning, setup and one-off commands as functions.
+Work done once, on demand, for an entity the caller already holds (`spawnNpc`, `equip`) is a plain function, not a system.
 
 ## Rules
 
@@ -104,4 +96,3 @@ Several systems that read the same events: the first consumer swaps and stores t
 | Draining with `while i <= #hits` | Events that emit events can loop without end in one frame | Swap, then drain the batch |
 | Manual delete of a collected entity a cascade already removed | Debug world raises | `world.deferred`, or `world:contains` |
 | Yielding mid-system | World changes under the loop | `task.spawn` + event |
-| A system for one-off work | A frame of delay and a query for one entity | Plain function |
