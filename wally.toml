@@ -1,5 +1,5 @@
 [package]
-name = "ukendio/jecs"
+name = "raild3x/jecs"
 version = "0.11.0"
 registry = "https://github.com/UpliftGames/wally-index"
 realm = "shared"
