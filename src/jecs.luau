@@ -3882,6 +3882,7 @@ local function world_new(DEBUG: boolean?)
 			DEBUG_DELETING_ENTITY = nil
 		end
 		world_delete = world_delete_checked
+		world.delete = world_delete_checked
 
 		local function world_remove_checked(world: world, entity: i53, id: i53)
 			DEBUG_IS_DELETING_ENTITY(entity)

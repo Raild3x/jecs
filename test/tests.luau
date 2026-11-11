@@ -1568,6 +1568,20 @@ TEST("world:delete()", function()
 		world:set(e, A, true)
 		CHECK(world:has(e, A) == false)
 	end
+
+	do CASE "debug world should check structural changes in OnRemove when the entity is deleted directly"
+		local world = jecs.world(true)
+		local A = world:component()
+		local B = world:entity()
+		world:set(A, jecs.OnRemove, function(entity)
+			world:add(entity, B)
+		end)
+		local e = world:entity()
+		world:set(e, A, true)
+		CHECK_EXPECT_ERR(function()
+			world:delete(e)
+		end)
+	end
 end)
 
 TEST("world:each()", function()
