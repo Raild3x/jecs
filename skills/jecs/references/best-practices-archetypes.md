@@ -9,7 +9,7 @@ A columnar database:
 | Table | Archetype: entities with exactly the same ids |
 | Column | Data component |
 | Row | Entity |
-| Foreign key | Entity stored in a component |
+| Foreign key | Entity in a component |
 | Index | Pair: one table per target |
 | Query | A scan over the matching tables |
 
@@ -54,7 +54,7 @@ Ratios from lune and from Roblox Studio (JECS native). Two figures = the two env
 | Selecting one state among 10,000, vs a tag or pair filter | value + `if`: 4x when 25% match, about 100x when 1% match |
 | Despawn, vs collect-then-delete | marker tag + cleanup query 1.2-2x; in-loop delete no faster |
 | Deferred queue (lune), vs hand-written collect-then-apply | 1.0-1.6x; about 45 ns to queue a change |
-| Pair vs component link, 10,000 holders: build | equal at 10 targets; 3x at 1,000; 10-19x at 10,000 |
+| Pair vs entity in a component, 10,000 holders: build | equal at 10 targets; 3x at 1,000; 10-19x at 10,000 |
 | ... read one target | `world:target` 2-5x `world:get` |
 | ... read the target for every row of a loop | wildcard query + `world:target` 7-15x a component column (lune), 6-10x (Studio) |
 | ... same work as one query per target, vs a component column (lune) | 1.1x at 1,000 holders per target; 1.6x at 100; 5-6x at 10 |

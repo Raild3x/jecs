@@ -64,5 +64,5 @@ With ids and world in separate modules, the world module requires the ids module
 | God component | Every system loads all of it; wide entities make structural changes dearer | Split by reader |
 | One component per primitive field | Queries of five terms for one concept | Combine what travels together |
 | A tag per state (`Idle`, `Walking`) | Two structural changes per switch; invalid combinations possible | Value component, or exclusive pair if selected on |
-| Entity stored in a component for something that belongs to it | No reverse lookup, no cleanup | Pair |
+| Entity in a component for something that belongs to it | No reverse lookup, no cleanup | Pair |
 | `world:component()` for a marker | A column and one of 256 ids | `jecs.tag()` |
