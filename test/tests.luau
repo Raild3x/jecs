@@ -1082,6 +1082,134 @@ TEST("world:component()", function()
 	end
 end)
 
+TEST("jecs.component() and jecs.tag() after jecs.world()", function()
+	do CASE "world:component() should error after a late jecs.component()"
+		local world = jecs.world()
+		local A = world:component()
+		local late = jecs.component()
+		CHECK((late :: any) == (A :: any)) -- the aliasing the error is there to report
+
+		local ok, err = pcall(world.component, world)
+		CHECK(not ok)
+		CHECK(string.find(tostring(err), "jecs.world()", 1, true) ~= nil)
+		CHECK(string.find(tostring(err), "world:component()", 1, true) ~= nil)
+		jecs.ECS_META_RESET()
+	end
+
+	do CASE "world:component() should error after a late jecs.tag()"
+		local world = jecs.world()
+		local late = jecs.tag()
+		local e = world:entity()
+		CHECK(ECS_ID(e) == (late :: any))
+
+		CHECK_EXPECT_ERR(function()
+			world:component()
+		end)
+		jecs.ECS_META_RESET()
+	end
+
+	do CASE "debug world should error on add after a late jecs.tag()"
+		local world = jecs.world(true)
+		local T = world:entity()
+		local e = world:entity()
+		world:add(e, T)
+		jecs.tag()
+		CHECK_EXPECT_ERR(function()
+			world:add(e, T)
+		end)
+		jecs.ECS_META_RESET()
+	end
+
+	do CASE "debug world should error on set after a late jecs.component()"
+		local world = jecs.world(true)
+		local A = world:component()
+		local e = world:entity()
+		world:set(e, A, 1)
+		jecs.component()
+		CHECK_EXPECT_ERR(function()
+			world:set(e, A, 2)
+		end)
+		CHECK(world:get(e, A) == 1)
+		jecs.ECS_META_RESET()
+	end
+
+	do CASE "debug world should error on remove after a late jecs.component()"
+		local world = jecs.world(true)
+		local A = world:component()
+		local e = world:entity()
+		world:set(e, A, 1)
+		jecs.component()
+		CHECK_EXPECT_ERR(function()
+			world:remove(e, A)
+		end)
+		CHECK(world:has(e, A))
+		jecs.ECS_META_RESET()
+	end
+
+	do CASE "a world created after the registration should work"
+		local old = jecs.world(true)
+		local A = jecs.component()
+		local T = jecs.tag()
+		local world = jecs.world(true)
+
+		local B = world:component()
+		CHECK((B :: any) ~= (A :: any))
+		local e = world:entity()
+		CHECK(ECS_ID(e) ~= (T :: any))
+		world:set(e, A, 1)
+		world:set(e, B, 2)
+		world:add(e, T)
+		CHECK(world:get(e, A) == 1)
+		CHECK(world:get(e, B) == 2)
+		CHECK(world:has(e, T))
+		world:remove(e, A)
+		CHECK(not world:has(e, A))
+
+		CHECK_EXPECT_ERR(function()
+			old:component()
+		end)
+		jecs.ECS_META_RESET()
+	end
+
+	do CASE "non-debug world should not check add, set and remove"
+		local world = jecs.world()
+		local A = world:component()
+		local T = world:entity()
+		local e = world:entity()
+		jecs.component()
+		jecs.tag()
+
+		world:set(e, A, 1)
+		world:add(e, T)
+		CHECK(world:get(e, A) == 1)
+		CHECK(world:has(e, T))
+		world:remove(e, A)
+		CHECK(not world:has(e, A))
+		jecs.ECS_META_RESET()
+	end
+
+	do CASE "ECS_META_RESET on its own should not make an existing world error"
+		jecs.component()
+		jecs.tag()
+		local world = jecs.world(true)
+		jecs.ECS_META_RESET()
+
+		local A = world:component()
+		local e = world:entity()
+		world:set(e, A, 1)
+		world:add(e, A)
+		world:remove(e, A)
+		CHECK(not world:has(e, A))
+
+		-- A registration after the reset is still late for this world.
+		jecs.component()
+		CHECK_EXPECT_ERR(function()
+			world:component()
+		end)
+		jecs.ECS_META_RESET()
+	end
+end)
+
 TEST("world:contains()", function()
 
 	local tag = jecs.tag()

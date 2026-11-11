@@ -412,8 +412,13 @@ end
 local ecs_metadata: Map<i53, Map<i53, any>> = {}
 local ecs_max_component_id = 0
 local ecs_max_tag_id = EcsRest
+-- Counts the calls to jecs.component() and jecs.tag(). ECS_META_RESET leaves
+-- it alone, so that a world can tell a registration made after it was created
+-- apart from a reset.
+local ecs_registrations = 0
 
 local function ECS_COMPONENT()
+	ecs_registrations += 1
 	ecs_max_component_id += 1
 	if ecs_max_component_id > HI_COMPONENT_ID then
 		error("Too many components")
@@ -422,6 +427,7 @@ local function ECS_COMPONENT()
 end
 
 local function ECS_TAG()
+	ecs_registrations += 1
 	ecs_max_tag_id += 1
 	return ecs_max_tag_id
 end
@@ -2805,6 +2811,20 @@ local function world_new(DEBUG: boolean?)
 	-- `world:component` will not pollute the global registration of components.
 	local max_component_id = ecs_max_component_id
 
+	-- jecs.component() and jecs.tag() allocate from the same id ranges as the
+	-- world does, so they have to be called before the world is created.
+	local registrations = ecs_registrations
+	local function ASSERT_NO_LATE_REGISTRATION()
+		if ecs_registrations ~= registrations then
+			error([[
+				jecs.component() or jecs.tag() was called after this world was
+				created, so the id it returned aliases an id that this world
+				hands out. Register ids before jecs.world(), or use
+				world:component() / world:entity() once a world exists.
+			]], 3)
+		end
+	end
+
 	local world = {
 		archetype_edges = archetype_edges,
 
@@ -3861,6 +3881,7 @@ local function world_new(DEBUG: boolean?)
 	end
 
 	local function world_component(world: world): i53
+		ASSERT_NO_LATE_REGISTRATION()
 		if max_component_id + 1 > HI_COMPONENT_ID then
 			-- IDs are partitioned into ranges because component IDs are not nominal,
 			-- so it needs to error when IDs intersect into the entity range.
@@ -3991,6 +4012,7 @@ local function world_new(DEBUG: boolean?)
 		world.delete = world_delete_checked
 
 		local function world_remove_checked(world: world, entity: i53, id: i53)
+			ASSERT_NO_LATE_REGISTRATION()
 			DEBUG_IS_DELETING_ENTITY(entity)
 			DEBUG_IS_INVALID_ENTITY(entity)
 			DEBUG_ID_IS_INVALID(id)
@@ -3998,6 +4020,7 @@ local function world_new(DEBUG: boolean?)
 			world_remove(world, entity, id)
 		end
 		local function world_add_checked(world: world, entity: i53, id: i53)
+			ASSERT_NO_LATE_REGISTRATION()
 			DEBUG_IS_DELETING_ENTITY(entity)
 			DEBUG_IS_INVALID_ENTITY(entity)
 			DEBUG_ID_IS_INVALID(id)
@@ -4006,6 +4029,7 @@ local function world_new(DEBUG: boolean?)
 			world_add(world, entity, id)
 		end
 		local function world_set_checked(world: world, entity: i53, id: i53, value: any)
+			ASSERT_NO_LATE_REGISTRATION()
 			DEBUG_IS_DELETING_ENTITY(entity)
 			DEBUG_IS_INVALID_ENTITY(entity)
 			DEBUG_ID_IS_INVALID(id)
