@@ -1582,6 +1582,29 @@ TEST("world:delete()", function()
 			world:delete(e)
 		end)
 	end
+
+	do CASE "debug world should accept changes to an entity again after a rejected delete"
+		local world = jecs.world(true)
+		local A = world:component()
+		local B = world:entity()
+		local C = world:entity()
+		local reject = true
+		world:set(A, jecs.OnRemove, function(entity)
+			if reject then
+				world:add(entity, B)
+			end
+		end)
+		local e = world:entity()
+		world:set(e, A, true)
+		CHECK_EXPECT_ERR(function()
+			world:delete(e)
+		end)
+		CHECK(world:contains(e))
+
+		reject = false
+		world:add(e, C)
+		CHECK(world:has(e, C))
+	end
 end)
 
 TEST("world:each()", function()
@@ -3117,6 +3140,31 @@ TEST("world:query()", function()
 			counter += 1
 			CHECK(e == e3)
 			CHECK(a == 3)
+		end
+		CHECK(counter == 1)
+	end
+
+	do CASE "repeating :with and :without on a stored query should not grow the filter"
+		local world = jecs.world()
+		local A = world:component()
+		local T1 = world:entity()
+		local T2 = world:entity()
+
+		local e = world:entity()
+		world:set(e, A, 1)
+		world:add(e, T1)
+
+		local q = world:query(A) :: any
+		for _ = 1, 10 do
+			q:with(T1)
+			q:without(T2)
+		end
+		CHECK(#q.filter_with == 2)
+		CHECK(#q.filter_without == 1)
+
+		local counter = 0
+		for _ in q do
+			counter += 1
 		end
 		CHECK(counter == 1)
 	end

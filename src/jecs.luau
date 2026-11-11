@@ -1352,15 +1352,27 @@ end
 
 local function query_with(query: query, ...: i53)
 	local filter_with = query.filter_with
-	local with = { ... }
+	local with = {}
+	for i = 1, select("#", ...) do
+		local id = select(i, ...)
+		if not table.find(filter_with, id) and not table.find(with, id) then
+			table.insert(with, id)
+		end
+	end
 	table.move(filter_with, 1, #filter_with, #with + 1, with)
 	query.filter_with = with
 	return query
 end
 
 local function query_without(query: query, ...: i53)
-	local without = { ... }
+	local without = {}
 	local filter_without = query.filter_without
+	for i = 1, select("#", ...) do
+		local id = select(i, ...)
+		if not (filter_without and table.find(filter_without, id)) and not table.find(without, id) then
+			table.insert(without, id)
+		end
+	end
 	if filter_without then
 		table.move(filter_without, 1, #filter_without, #without + 1, without)
 	end
@@ -3845,6 +3857,9 @@ local function world_new(DEBUG: boolean?)
 		local DEBUG_DELETING_ENTITY
 		local function DEBUG_IS_DELETING_ENTITY(entity: i53)
 			if DEBUG_DELETING_ENTITY == entity then
+				-- The delete is about to be aborted by this error, so the
+				-- entity is no longer in the process of being deleted.
+				DEBUG_DELETING_ENTITY = nil
 				error([[
 					Tried to make structural changes while the entity is in process
 					of being deleted. You called this function inside of the
