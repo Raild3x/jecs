@@ -341,6 +341,24 @@ The first test in which nothing told the agent to read the skill. The skill was 
 - Limits: one model, an empty project folder (no `wally.toml` to hint either way), 20 queries, and no query about replication or scheduler choice, which the skill also excludes.
 - The queries and the runner (`trigger_queries.json`, `trigger_eval.py`) are not in the repo. The runner passes the query on stdin: on Windows a multi-line query on the command line never starts.
 
+## Results, 2026-11-11: rival at ten runs per arm
+
+Sonnet at medium effort, graded by `rival/check.luau` only. The current skill is the text at `1cbef9f`; the skill before the rewrite is the tree at `7226e18`. Counts include the earlier runs above (three per skill arm) and the three run after the terminology change.
+
+| Arm | Runs | Chose a pair | `setRival` with a dead handle wrong | Id registered after the world | All five checks pass | Tokens per run | Time per run |
+|---|---|---|---|---|---|---|---|
+| No skill | 3 | 0 | 0 | 1 | 2 | 49,187 | 29 s |
+| Skill before the rewrite | 13 | 2 | 3 | 0 | 10 | 56,456 | 29 s |
+| Current skill | 13 | 0 | 0 | 1 | 12 | 55,788 | 30 s |
+
+Tokens and time are the means of this round's runs (10, 7 and 3).
+
+- The scenario does not rank the two skills on the model chosen. Two pairs in 13 against none in 13 is not a difference at this size (Fisher's exact test, p = 0.48), and all three runs without a skill chose the component.
+- The dead-handle rule is where the versions differ most: 3 of 13 against 0 of 12 that loaded. Two of the three failures are the pair runs; the third kept the old rival when handed a dead one. This is also short of a reliable difference (p = 0.22).
+- One current-skill run and one no-skill run declared `Rival` with `jecs.component()` below `jecs.world()`. Under lune the module then fails on the first `set` ("attempt to modify a readonly table"), so every check fails. The current-skill run read SKILL.md, which states the rule in its core principle and in the mistakes table, and no run on the older skill made the mistake. Neither failing run had executed its code.
+- Reference files opened: the current skill's runs opened one (`best-practices-entities`) in all seven; the older skill's runs opened three to five.
+- Two runs returned without doing any work and were replaced; they are not counted.
+
 ## Tickets
 
 **tickets:** (1) `Game.stun(unit)` / `Game.unstun(unit)`; a stunned unit takes no poison in `Game.step`. (2) No unit's Health may exceed 100, whoever writes it; other modules call `Game.world:set` directly, so enforce it with a hook. (3) At the end of `Game.step` remove every unit with Health <= 0; followers of a removed unit stay alive. (4) `Game.countPoisoned()`, called every frame.
