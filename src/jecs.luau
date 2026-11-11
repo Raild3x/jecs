@@ -3173,11 +3173,10 @@ local function world_new(DEBUG: boolean?)
 					cr.on_add = on_add
 				end
 				idr_pair.on_add = on_add
-			else
-				local idr = component_index[component]
-				if idr then
-					idr.on_add = on_add
-				end
+			end
+			local idr = component_index[component]
+			if idr then
+				idr.on_add = on_add
 			end
 			world_set(world, component, EcsOnAdd, on_add)
 		end
@@ -3218,11 +3217,10 @@ local function world_new(DEBUG: boolean?)
 				end
 
 				idr_pair.on_change = on_change
-			else
-				local idr = component_index[component]
-				if idr then
-					idr.on_change = on_change
-				end
+			end
+			local idr = component_index[component]
+			if idr then
+				idr.on_change = on_change
 			end
 
 			world_set(world, component, EcsOnChange, on_change)
@@ -3261,11 +3259,10 @@ local function world_new(DEBUG: boolean?)
 				end
 
 				idr_pair.on_remove = on_remove
-			else
-				local idr = component_index[component]
-				if idr then
-					idr.on_remove = on_remove
-				end
+			end
+			local idr = component_index[component]
+			if idr then
+				idr.on_remove = on_remove
 			end
 
 			world_set(world, component, EcsOnRemove, on_remove)

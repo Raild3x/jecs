@@ -1698,6 +1698,75 @@ TEST("world:added", function()
 		CHECK(ran)
 	end
 
+	do CASE "Should invoke added signal for plain adds after the id has been used both as a component and as a Relation"
+		local A = world:component()
+		local B = world:component()
+
+		world:add(world:entity(), A)
+		world:add(world:entity(), pair(A, B))
+
+		local plain, relation = 0, 0
+		world:added(A, function(_, id)
+			if IS_PAIR(id) then
+				relation += 1
+			else
+				plain += 1
+			end
+		end)
+
+		local entity = world:entity()
+		world:add(entity, A)
+		world:add(entity, pair(A, B))
+		CHECK(plain == 1)
+		CHECK(relation == 1)
+	end
+
+	do CASE "Should invoke changed signal for plain sets after the id has been used both as a component and as a Relation"
+		local A = world:component()
+		local B = world:component()
+
+		local entity = world:entity()
+		world:set(entity, A, 1)
+		world:set(entity, pair(A, B), 1)
+
+		local plain, relation = 0, 0
+		world:changed(A, function(_, id)
+			if IS_PAIR(id) then
+				relation += 1
+			else
+				plain += 1
+			end
+		end)
+
+		world:set(entity, A, 2)
+		world:set(entity, pair(A, B), 2)
+		CHECK(plain == 1)
+		CHECK(relation == 1)
+	end
+
+	do CASE "Should invoke removed signal for plain removes after the id has been used both as a component and as a Relation"
+		local A = world:component()
+		local B = world:component()
+
+		local entity = world:entity()
+		world:add(entity, A)
+		world:add(entity, pair(A, B))
+
+		local plain, relation = 0, 0
+		world:removed(A, function(_, id)
+			if IS_PAIR(id) then
+				relation += 1
+			else
+				plain += 1
+			end
+		end)
+
+		world:remove(entity, A)
+		world:remove(entity, pair(A, B))
+		CHECK(plain == 1)
+		CHECK(relation == 1)
+	end
+
 	do CASE "Should not override hook"
 		local A = world:component()
 		local count = 1
