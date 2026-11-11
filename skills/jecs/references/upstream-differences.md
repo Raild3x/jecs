@@ -49,4 +49,6 @@ A structural change wanted from a remove hook or listener has no queue to go to:
 
 ## Checking
 
+Library behaviour stated in this skill is asserted by scripts where a script can check it; cost figures and typing are not. Run them when a rule looks wrong.
+
 Copy the project's `jecs.luau` into `test/skill/verify/` in the `raild3x/jecs` repository and run `lune run facts.luau` and `lune run examples.luau`. The scripts detect upstream and assert the upstream column above.

@@ -77,7 +77,7 @@ Run what you wrote once: require the module from a throwaway script (`lune run`,
 
 | File | Open when |
 |---|---|
-| [core-basics](references/core-basics.md) | World, ids, entities, components, handles |
+| [core-basics](references/core-basics.md) | World, ids, entities, components, handles; what the debug world catches |
 | [core-queries](references/core-queries.md) | Queries, filters, caching, counting, column loops |
 | [core-archetypes](references/core-archetypes.md) | How entities are stored; what a structural change is; fragmentation |
 | [feature-pairs](references/feature-pairs.md) | Relationships, targets, wildcards, hierarchy |
@@ -91,7 +91,7 @@ Run what you wrote once: require the module from a throwaway script (`lune run`,
 | [best-practices-systems](references/best-practices-systems.md) | Systems, structure changes, events |
 | [best-practices-change-tracking](references/best-practices-change-tracking.md) | Finding what changed |
 | [performance](references/performance.md) | Measured cost of each choice and the setup behind it; when speed matters at all |
-| [advanced-api](references/advanced-api.md) | `bulk_insert`, >256 components, debug world |
+| [advanced-api](references/advanced-api.md) | `bulk_insert`, >256 components, `world:cleanup` |
 | [flecs](references/flecs.md) | Flecs named: what carries over, what is missing |
 | [upstream-differences](references/upstream-differences.md) | The project uses `ukendio/jecs` |
 

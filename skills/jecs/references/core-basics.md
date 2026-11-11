@@ -1,7 +1,5 @@
 # Core basics
 
-Library behaviour stated in these files is asserted by scripts in `test/skill/verify/` in the `raild3x/jecs` repository where a script can check it; cost figures and typing are not. Run it when a rule looks wrong.
-
 ## Setup
 
 ```luau
@@ -44,6 +42,23 @@ Singleton: `world:set(Time, Time, 12.5)`, `world:get(Time, Time)`. World-wide st
 - The newest freed slot is reused first, generation + 1. The old handle stays unequal until the generation wraps (16,777,216 reuses), so a stored handle can be compared and checked safely.
 - `get` and `has` on a dead handle are safe: nil and false. A pair or query built from it is not: once the slot is reused, `world:has(x, pair(R, dead))`, `world:query(pair(R, dead))` and `world:children(dead)` answer for the new occupant.
 - Check `world:contains` before a write or `pair()`. A pair id keeps only the slot, not the generation: `pair()` itself never fails. Adding a pair built from a dead handle raises while the slot is free, and silently links to the new occupant once the slot is reused.
+
+## Debug world
+
+`jecs.world(true)` raises on:
+
+- `set`, `add`, `remove` on a dead entity
+- adding a dead entity as an id
+- removing a wildcard pair
+- any `add`/`set`/`remove` on an entity from its own `OnRemove` while it is being deleted, direct or cascaded. The delete stops half way: the entity stays alive with its components, but the remove hooks of the ids before the failing one have already run, so a hook that releases a resource will run again on the next delete
+- `delete` of a dead handle
+- a hook or trait set after the id's first use
+- a raw hook on an id that has signal listeners
+- any `add`/`set`/`remove` after a late `jecs.component()` / `jecs.tag()`
+
+Run it in Studio and in tests: on a normal world all but the wildcard removal are silent. It costs about 3.7x on a component `set` ([performance](performance.md)), so not in production.
+
+Not checked: `bulk_insert`; `world:clear` on a dead handle; a pair built from a stale handle whose slot was reused; the `jecs.Component` trait added to an entity already in use (ignored).
 
 ## Mistakes
 

@@ -73,14 +73,7 @@ world:add(npc, pair(Team, Blue))                       -- replaces Red
 for e in world:query(Health):with(pair(Team, Blue)) do end
 ```
 
-Work grouped by target: loop over the targets, query each group. The target is known in the inner loop, so `world:target` per row is not needed. Pays off with large groups: each inner query has a fixed cost ([best-practices-queries](best-practices-queries.md)).
-
-```luau
-for squad in world:query(Squad) do
-	for unit, position in world:query(Position):with(pair(InSquad, squad)) do
-	end
-end
-```
+Work grouped by target (a cell, a squad): loop over the targets and query each group, so `world:target` per row is not needed. Example and when it pays: [best-practices-queries](best-practices-queries.md).
 
 Several values of one type on an entity: a tag relation with the component as target. Hooks and signals of the component do not run for these pairs; put them on the relation if the values need the same invariant.
 
