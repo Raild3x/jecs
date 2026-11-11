@@ -31,6 +31,7 @@ end
 -- Preregistered ids, configured before the first world exists
 local PreHealth = jecs.component()
 local PreDead = jecs.tag()
+local PrePerWorld = jecs.component()
 local PreOwnedBy = jecs.tag()
 local preAdds = 0
 jecs.meta(PreHealth, jecs.Name, "Health")
@@ -920,6 +921,269 @@ if FORK then
 	check("fork: a listener that queues the change that invokes it raises instead of hanging", raises(function()
 		d:apply()
 	end) and rounds > 1)
+end
+
+print("fragmentation")
+do
+	local w = jecs.world()
+	local Pos, X1, X2 = w:component(), w:component(), w:component()
+	local InCell = w:entity()
+	local cells = {}
+	for i = 1, 100 do
+		cells[i] = w:entity()
+	end
+	local before = #w.archetypes
+	for i = 1, 100 do
+		for _, shape in { {}, { X1 }, { X2 }, { X1, X2 } } do
+			local e = w:entity()
+			w:set(e, Pos, i)
+			for _, id in shape do
+				w:set(e, id, 0)
+			end
+			w:add(e, pair(InCell, cells[i]))
+		end
+	end
+	local function walked(q): number
+		local n = 0
+		for _, a in q:archetypes() do
+			if #a.entities > 0 then
+				n += 1
+			end
+		end
+		return n
+	end
+	check("100 targets across 4 holder shapes create at least 400 archetypes", #w.archetypes - before >= 400)
+	check("a query naming one target walks only the archetypes of that target", walked(w:query(Pos):with(pair(InCell, cells[42])):cached()) == 4)
+	check("a wildcard query walks one archetype per target per shape", walked(w:query(Pos):with(pair(InCell, jecs.Wildcard)):cached()) == 400)
+	check("a query on the plain component walks them all too", walked(w:query(Pos):cached()) == 400)
+
+	local onOwner, onItem = jecs.world(), jecs.world()
+	local startOwner, startItem = #onOwner.archetypes, #onItem.archetypes
+	local R1, R2 = onOwner:entity(), onItem:entity()
+	for _ = 1, 10 do
+		local owner = onOwner:entity()
+		for _ = 1, 5 do
+			onOwner:add(owner, pair(R1, onOwner:entity()))
+		end
+		local owner2 = onItem:entity()
+		for _ = 1, 5 do
+			onItem:add(onItem:entity(), pair(R2, owner2))
+		end
+	end
+	check("pairs on the owner: every owner passes through an archetype per item", #onOwner.archetypes - startOwner == 50)
+	check("pairs on the items: one archetype per owner", #onItem.archetypes - startItem == 10)
+end
+
+print("removal, early exit, bulk")
+do
+	local w3 = jecs.world()
+	local Data, Rel = w3:component(), w3:entity()
+	local holder, t1, t2 = w3:entity(), w3:entity(), w3:entity()
+	w3:set(holder, Data, 7)
+	w3:add(holder, pair(Rel, t1))
+	w3:add(holder, pair(Rel, t2))
+	local held = {}
+	for target in w3:targets(holder, Rel) do
+		table.insert(held, target)
+	end
+	for _, target in held do
+		w3:remove(holder, pair(Rel, target))
+	end
+	check("removing each collected target clears a relation and keeps the data", not w3:has(holder, pair(Rel, jecs.Wildcard)) and w3:get(holder, Data) == 7)
+	local dbg = jecs.world(true)
+	local dh, dt = dbg:entity(), dbg:entity()
+	local DRel = dbg:entity()
+	dbg:add(dh, pair(DRel, dt))
+	check("debug world: removing a wildcard pair raises", raises(function()
+		dbg:remove(dh, pair(DRel, jecs.Wildcard))
+	end))
+	local w4 = jecs.world()
+	local D4, R4 = w4:component(), w4:entity()
+	local h4, t4 = w4:entity(), w4:entity()
+	w4:set(h4, D4, 7)
+	w4:add(h4, pair(R4, t4))
+	w4:remove(h4, pair(R4, jecs.Wildcard))
+	check("normal world: removing a wildcard pair leaves the pair and loses the data", w4:has(h4, pair(R4, t4)) and w4:get(h4, D4) == nil)
+
+	local w5 = jecs.world()
+	local C5 = w5:component()
+	for i = 1, 5 do
+		w5:set(w5:entity(), C5, i)
+	end
+	local q5 = w5:query(C5):cached()
+	for _ in q5 do
+		break
+	end
+	check("a cached query iterated again after an early break yields every entity", count(q5) == 5)
+	local bulkWorld = jecs.world()
+	local B1, B2, B3 = bulkWorld:component(), bulkWorld:component(), bulkWorld:component()
+	local startBulk = #bulkWorld.archetypes
+	jecs.bulk_insert(bulkWorld, bulkWorld:entity(), { B1, B2, B3 }, { 1, 2, 3 })
+	check("bulk_insert creates one archetype where three sets create three", #bulkWorld.archetypes - startBulk == 1)
+end
+
+print("review findings")
+do
+	local w = jecs.world()
+	local Tag, Data, Rel = w:entity(), w:component(), w:entity()
+
+	-- world:set on a tag raises only after the tag was added
+	local e = w:entity()
+	local added = 0
+	w:added(Tag, function()
+		added += 1
+	end)
+	check("world:set on a tag raises after the tag is already added, with no added signal", raises(function()
+		w:set(e, Tag, 1)
+	end) and w:has(e, Tag) and added == 0)
+
+	-- pair() is arithmetic: only using the pair can raise
+	local dead = w:entity()
+	w:delete(dead)
+	local stalePair
+	check("pair() of a dead handle does not raise; adding it does", not raises(function()
+		stalePair = pair(Rel, dead)
+	end) and raises(function()
+		w:add(e, stalePair)
+	end))
+
+	-- a stored uncached query resumes where it stopped
+	for i = 1, 3 do
+		w:set(w:entity(), Data, i)
+	end
+	local stored = w:query(Data)
+	for _ in stored do
+		break
+	end
+	check("a stored uncached query yields the remainder after a break", count(stored) == 2)
+	check("... and nothing after a full pass", count(stored) == 0)
+
+	-- a cleanup trait set late applies to pairs with new targets only
+	local Owned = w:entity()
+	local oldTarget, newTarget = w:entity(), w:entity()
+	local oldHolder, newHolder = w:entity(), w:entity()
+	w:add(oldHolder, pair(Owned, oldTarget))
+	w:add(Owned, pair(jecs.OnDeleteTarget, jecs.Delete))
+	w:add(newHolder, pair(Owned, newTarget))
+	w:delete(oldTarget)
+	w:delete(newTarget)
+	check("a cleanup trait added late is ignored for the pair in use and honoured for a new target", w:contains(oldHolder) and not w:contains(newHolder))
+
+	-- world:clear on a dead handle is not a debug check
+	local dbg = jecs.world(true)
+	local gone = dbg:entity()
+	dbg:delete(gone)
+	check("debug world: world:clear on a dead handle is silent", not raises(function()
+		dbg:clear(gone)
+	end))
+
+	-- an entity that lost its last component and gets one again
+	local w2 = jecs.world()
+	local B = w2:component()
+	local e1, e2, e3 = w2:entity(), w2:entity(), w2:entity()
+	w2:set(e3, B, "e3")
+	w2:set(e1, B, "e1")
+	w2:remove(e1, B)
+	w2:set(e2, B, "e2")
+	w2:remove(e2, B)
+	w2:set(e2, B, "e2-again")
+	w2:delete(e1)
+	if FORK then
+		check("fork: an emptied entity given a component again keeps its own data", w2:get(e2, B) == "e2-again")
+	else
+		check("upstream: an emptied entity given a component again reads another entity's data", w2:get(e2, B) == "e3")
+	end
+	-- the same sequence with a permanent tag on every entity
+	local w3 = jecs.world()
+	local B3, Keep = w3:component(), w3:entity()
+	local k1, k2, k3 = w3:entity(), w3:entity(), w3:entity()
+	for _, k in { k1, k2, k3 } do
+		w3:add(k, Keep)
+	end
+	w3:set(k3, B3, "e3")
+	w3:set(k1, B3, "e1")
+	w3:remove(k1, B3)
+	w3:set(k2, B3, "e2")
+	w3:remove(k2, B3)
+	w3:set(k2, B3, "e2-again")
+	w3:delete(k1)
+	check("with a permanent tag the same sequence keeps the data on both libraries", w3:get(k2, B3) == "e2-again" and w3:get(k3, B3) == "e3")
+
+	local w4 = jecs.world()
+	local Flag, Num = w4:component(), w4:component()
+	local f = w4:entity()
+	jecs.bulk_insert(w4, f, { Flag, Num }, { false, 1 })
+	if FORK then
+		check("fork: bulk_insert stores a false value", w4:get(f, Flag) == false)
+	else
+		check("upstream: bulk_insert drops a false value", w4:get(f, Flag) == nil)
+	end
+end
+
+if FORK then
+	print("review findings: deferred and debug")
+	local w = jecs.world()
+	local Health, InSquad = w:component(), w:entity()
+	local deferred = (w :: any).deferred
+	local unit, other, squad = w:entity(), w:entity(), w:entity()
+	deferred:add(unit, pair(InSquad, squad))
+	deferred:set(other, Health, 9)
+	w:delete(squad)
+	check("deferred: a queued pair whose target died raises at apply", raises(function()
+		deferred:apply()
+	end) and w:get(other, Health) == nil)
+	deferred:apply()
+	check("deferred: ... and the changes after it are made by the next apply", w:get(other, Health) == 9)
+
+	local unit2, squad2 = w:entity(), w:entity()
+	deferred:add(unit2, pair(InSquad, squad2))
+	w:delete(squad2)
+	local stranger = w:entity()
+	deferred:apply()
+	check("deferred: once the slot is reused the queued pair links to the new occupant", w:target(unit2, InSquad) == stranger)
+
+	local dbg = jecs.world(true)
+	local D = dbg:component()
+	local victim = dbg:entity()
+	dbg:set(D, jecs.OnRemove, function(entity)
+		dbg:set(entity, D, 0) -- not structural: the entity has D
+	end)
+	dbg:set(victim, D, 1)
+	check("debug world: any write to an entity from its OnRemove during a delete raises and abandons the delete", raises(function()
+		dbg:delete(victim)
+	end) and dbg:contains(victim))
+end
+
+print("several worlds")
+do
+	local w1, w2 = jecs.world(), jecs.world()
+	local startAdds = preAdds
+	w1:set(w1:entity(), PreHealth, 1)
+	w2:set(w2:entity(), PreHealth, 1)
+	check("a jecs.meta hook runs in every world created after it", preAdds - startAdds == 2)
+
+	local PerWorld = PrePerWorld
+	local d1, d2 = jecs.world(true), jecs.world(true)
+	local hits1, hits2 = 0, 0
+	d1:set(PerWorld, jecs.OnAdd, function()
+		hits1 += 1
+	end)
+	d2:set(PerWorld, jecs.OnAdd, function()
+		hits2 += 1
+	end)
+	d1:set(d1:entity(), PerWorld, 1)
+	d2:set(d2:entity(), PerWorld, 1)
+	d2:set(d2:entity(), PerWorld, 1)
+	check("world:set of a hook before the first use of the id is per world", hits1 == 1 and hits2 == 2)
+
+	local Follows = d1:entity()
+	local leader, unit = d1:entity(), d1:entity()
+	local seen
+	d1:added(Follows, function(_, id)
+		seen = jecs.pair_second(d1, id)
+	end)
+	d1:add(unit, pair(Follows, leader))
+	check("pair_second on the id a relation listener receives gives the target", seen == leader)
 end
 
 -- Last, because it leaves the world it runs against unusable on the fork.

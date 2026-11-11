@@ -2,9 +2,11 @@
 
 ## When to use
 
-- Per-frame work over many entities: a cached query at module scope.
-- A one-off lookup: an uncached query, iterated where it is built.
-- One entity you already hold: `world:get` / `world:has`, no query.
+| Situation | Use | Because |
+|---|---|---|
+| Per-frame work over many entities | Cached query at module scope | The match list is kept up to date instead of rebuilt each call |
+| One-off or rarely run lookup, or terms only known at run time | Uncached query, iterated where it is built | Cheap to make; a cached one would install observers that stay until `:fini()` |
+| One entity you already hold | `world:get` / `world:has` | No scan at all |
 
 ## API
 
@@ -35,6 +37,8 @@ end
 
 Pair terms: `pair(R, t)` (yields the pair's value if it has one), `pair(R, jecs.Wildcard)` (any target; one row per entity), `pair(jecs.Wildcard, t)` (any relation to `t`).
 
+Put a term in `world:query(...)` when the loop reads its value, in `:with(...)` when it only has to be present. Speed is the same (measured 1.0x); the point is that the loop variables then name exactly what the system reads.
+
 ## Patterns
 
 Count without visiting entities:
@@ -51,15 +55,38 @@ local function countPoisoned(): number
 end
 ```
 
-Direct column writes via `columns_map[id][row]` skip hooks and signals. Only for a measured hot loop on an unobserved component.
+First match:
+
+```luau
+local function firstBoss(): jecs.Entity?
+	for entity in world:query(Boss) do
+		return entity
+	end
+	return nil
+end
+```
+
+Column loop: read and write the columns directly, skipping the iterator and `world:set`.
+
+```luau
+for _, archetype in movers:archetypes() do
+	local entities = archetype.entities
+	local positions = archetype.columns_map[Position]
+	local velocities = archetype.columns_map[Velocity]
+	for row = #entities, 1, -1 do
+		positions[row] += velocities[row] * dt
+	end
+end
+```
+
+A direct write runs no hook and no signal, so anything observing the component (clamps, change tracking) never hears of it. Only for a measured hot loop on a component nothing observes.
 
 ## Mistakes
 
 | Mistake | Result | Instead |
 |---|---|---|
-| `:with(A):with(B)`, `:without(A):without(B)` | Upstream keeps only the last call | `:with(A, B)` |
-| `:cached()` inside a function that runs repeatedly | Two observers per call, kept until `:fini()` | Once, at module scope |
-| Uncached query stored in a variable | Yields nothing the second time | Iterate in place, or cache |
+| `:cached()` inside a function that runs repeatedly | Two observers per call, kept until `:fini()`, so they pile up every frame | Once, at module scope |
+| Uncached query stored in a variable | The second loop continues where the first stopped: nothing after a full pass, the remainder after a `break` | Iterate in place, or cache |
 | A query iterated inside its own loop | Outer loop ends early | Separate query |
 | Structural change inside the loop | Skips or repeats entities | After the loop: [best-practices-systems](best-practices-systems.md) |
 | Relying on order | Follows archetype layout and history; not a contract | Sort |

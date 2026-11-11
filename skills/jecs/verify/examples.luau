@@ -20,6 +20,11 @@ end
 type Hit = { target: jecs.Entity, amount: number }
 
 local Health = jecs.component<<number>>()
+local Thorns = jecs.component<<number>>()
+local Resource = jecs.component<<{ released: boolean }>>()
+local Previous = jecs.tag()
+local Begin, End = jecs.tag(), jecs.tag()
+local InSquad = jecs.tag()
 local MoveState = jecs.component<<"idle" | "walking" | "attacking">>()
 local Target = jecs.component<<jecs.Entity>>()
 local Model = jecs.component<<{ destroyed: boolean }>>()
@@ -49,7 +54,7 @@ local living = world:query(Health):without(Dead):cached()
 local doomed = world:query(Dead):cached()
 local targeting = world:query(Target):cached()
 
--- events: a plain array, filled through a helper, cleared by the last system ----
+-- events: a plain array, filled through a helper, swapped out by its consumer ---
 local hits: { Hit } = {}
 local function dealDamage(target: jecs.Entity, amount: number)
 	table.insert(hits, { target = target, amount = amount })
@@ -57,11 +62,17 @@ end
 
 -- systems, in the order they run -----------------------------------------------
 local function applyDamage()
-	for _, hit in hits do
+	local batch = hits
+	hits = {} -- hits emitted while draining land here: handled next frame
+	for _, hit in batch do
 		local health = world:get(hit.target, Health)
 		if health then
 			-- the entity already has Health, so this set is not structural
 			world:set(hit.target, Health, health - hit.amount)
+			local thorns = world:get(hit.target, Thorns)
+			if thorns then
+				dealDamage(hit.target, thorns) -- an event emitted by an event
+			end
 		end
 	end
 end
@@ -80,6 +91,16 @@ local function markDead()
 end
 
 local function dropDeadTargets()
+	if FORK then
+		local deferred = (world :: any).deferred
+		for entity, target in targeting do
+			if not world:contains(target) or world:has(target, Dead) then
+				deferred:remove(entity, Target)
+			end
+		end
+		deferred:apply()
+		return
+	end
 	local stale: { jecs.Entity } = {}
 	for entity, target in targeting do
 		if not world:contains(target) or world:has(target, Dead) then
@@ -112,16 +133,11 @@ local function despawnDead()
 	end
 end
 
-local function clearEvents()
-	table.clear(hits)
-end
-
 local function frame()
 	applyDamage()
 	markDead()
 	dropDeadTargets()
 	despawnDead()
-	clearEvents()
 end
 
 -- the patterns, exercised ------------------------------------------------------
@@ -133,6 +149,18 @@ do
 	frame()
 	check("events: two hits in one frame both land", world:get(victim, Health) == 50)
 	check("events: the queue is empty after the frame", #hits == 0)
+
+	-- an event emitted while draining waits for the next frame, and is not lost
+	local thorny = world:entity()
+	world:set(thorny, Health, 100)
+	world:set(thorny, Thorns, 1)
+	dealDamage(thorny, 10)
+	frame()
+	check("events: a hit emitted during the drain is deferred to the next frame", world:get(thorny, Health) == 90 and #hits == 1)
+	frame()
+	check("events: ... and lands then", world:get(thorny, Health) == 89)
+	world:remove(thorny, Thorns)
+	frame()
 end
 do
 	local model = { destroyed = false }
@@ -149,7 +177,6 @@ do
 	dropDeadTargets()
 	check("entity reference: a dead target is treated as no target", not world:has(hunter, Target))
 	despawnDead()
-	clearEvents()
 	check("despawn: the marked entity is deleted after the loop", not world:contains(npc))
 	check("owned link: the item is deleted with its owner", not world:contains(sword))
 	check("remove hook: the model is released when the entity is deleted", model.destroyed)
@@ -250,18 +277,126 @@ do
 	stop()
 	check("change tracking: several sets in a frame leave one entry per entity", drained == 1)
 
-	-- change tracking without a listener: compare against the value last handled
-	local Shown = world:component<<number>>()
-	world:set(a, Shown, 8)
-	world:set(b, Shown, 0)
-	local redrawn = 0
-	for entity, health, shown in world:query(Health, Shown) do
-		if health ~= shown then
-			redrawn += 1
-			world:set(entity, Shown, health) -- already has Shown: not structural
+	-- change tracking without a listener: compare against the value last handled,
+	-- kept in a pair so no extra component is declared per tracked component
+	local c = world:entity()
+	world:set(c, Health, 5)
+	local tracked = world:query(Health, pair(Previous, Health)):cached()
+	local untracked = world:query(Health):without(pair(Previous, Health)):cached()
+	local redrawn, fresh = 0, {}
+	local function showHealth()
+		redrawn = 0
+		for entity, health, shown in tracked do
+			if health ~= shown then
+				redrawn += 1
+				world:set(entity, pair(Previous, Health), health) -- already present: not structural
+			end
+		end
+		table.clear(fresh)
+		for entity in untracked do
+			table.insert(fresh, entity)
+		end
+		for _, entity in fresh do
+			world:set(entity, pair(Previous, Health), world:get(entity, Health) :: number)
 		end
 	end
-	check("change tracking: comparing with a stored copy finds what differs", redrawn == 1 and world:get(b, Shown) == 10)
+	showHealth()
+	check("change tracking: entities without a previous value are the newly added ones", #fresh >= 3 and world:get(c, pair(Previous, Health)) == 5)
+	world:set(c, Health, 4)
+	showHealth()
+	check("change tracking: comparing with the previous-value pair finds what differs", redrawn == 1 and #fresh == 0 and world:get(c, pair(Previous, Health)) == 4)
+	world:remove(c, Health)
+	local lost = 0
+	for entity in world:query(pair(Previous, Health)):without(Health) do
+		lost += if entity == c then 1 else 0
+	end
+	check("change tracking: a previous value without the component marks a removal", lost == 1)
+end
+do
+	-- grouped work: loop over the targets, query each group
+	local Squad = world:entity()
+	local Position = world:component<<number>>()
+	local alpha, bravo = world:entity(), world:entity()
+	world:add(alpha, Squad)
+	world:add(bravo, Squad)
+	for i = 1, 6 do
+		local unit = world:entity()
+		world:set(unit, Position, i)
+		world:add(unit, pair(InSquad, if i % 2 == 0 then alpha else bravo))
+	end
+	local squads: { jecs.Entity } = {}
+	for squad in world:query(Squad) do
+		table.insert(squads, squad)
+	end
+	local visited, mismatched = 0, 0
+	for _, squad in squads do
+		for unit in world:query(Position):with(pair(InSquad, squad)) do
+			visited += 1
+			if world:target(unit, InSquad) ~= squad then
+				mismatched += 1
+			end
+		end
+	end
+	check("grouping: a loop per target visits every member with its target known", visited == 6 and mismatched == 0)
+
+	-- several values of one type: a tag relation with the component as target
+	local beam = world:entity()
+	world:set(beam, pair(Begin, Position), 1)
+	world:set(beam, pair(End, Position), 9)
+	local span = 0
+	for _, from, to in world:query(pair(Begin, Position), pair(End, Position)) do
+		span += to - from
+	end
+	check("pairs: pair(tag, component) holds a second value of the component type", span == 8 and world:get(beam, Position) == nil)
+
+	-- column loop: direct reads and writes, no hook or signal
+	local heard = 0
+	local stop = world:changed(Position, function()
+		heard += 1
+	end)
+	local movers = world:query(Position):cached()
+	for _, archetype in movers:archetypes() do
+		local entities = archetype.entities
+		local positions = archetype.columns_map[Position]
+		for row = #entities, 1, -1 do
+			positions[row] += 100
+		end
+	end
+	stop()
+	local moved = 0
+	for _, position in world:query(Position) do
+		moved += if position > 100 then 1 else 0
+	end
+	check("column loop: writes land and no listener hears them", moved == 6 and heard == 0)
+
+	-- first match
+	local function firstSquad(): jecs.Entity?
+		for squad in world:query(Squad) do
+			return squad
+		end
+		return nil
+	end
+	check("first match: returning from the loop yields one entity", firstSquad() == alpha or firstSquad() == bravo)
+end
+do
+	-- several worlds: a hook installed per world, before the id is used there
+	local function newWorld(): jecs.World
+		local w = jecs.world(true)
+		w:set(Resource, jecs.OnRemove, function(entity)
+			local resource = w:get(entity, Resource)
+			if resource then
+				resource.released = true
+			end
+		end)
+		return w
+	end
+	local w1, w2 = newWorld(), newWorld()
+	local r1, r2 = { released = false }, { released = false }
+	local e1, e2 = w1:entity(), w2:entity()
+	w1:set(e1, Resource, r1)
+	w2:set(e2, Resource, r2)
+	w2:delete(e2)
+	check("hooks: a per-world hook acts on its own world only", r2.released and not r1.released)
 end
 if FORK then
 	local deferred = (world :: any).deferred

@@ -22,7 +22,7 @@ JECS borrows its model from Flecs: archetypes, pairs, wildcards, cleanup traits,
 | Uncached query | `world:query(...)`, iterated where it is built |
 | `with`, `without` terms | `:with(A, B)`, `:without(C)` |
 | Singleton | a component set on its own id: `world:set(Time, Time, value)` |
-| Stage and merge, `ecs_defer_begin` / `ecs_defer_end` | `world.deferred` and `world.deferred:apply()` (fork), queued by hand |
+| Stage and merge | `world.deferred` and `world.deferred:apply()`, queued by hand |
 | Entity name | `jecs.Name`, a plain string with no lookup |
 
 Flecs design advice that holds in JECS:
@@ -31,7 +31,7 @@ Flecs design advice that holds in JECS:
 - Give a system one responsibility.
 - Create cached queries ahead of time, never inside a system.
 - Check a stored entity handle is alive before using it.
-- Reach for a relationship when the reverse lookup or the grouping is needed, and keep the number of targets small.
+- Reach for a relationship when the holder belongs to the target, or the reverse lookup or the grouping is needed. Keep an entity in a component for a link that merely points. Keep targets times holder shapes in the hundreds ([feature-pairs](feature-pairs.md)).
 - Group ids and systems by feature, with the ids of a feature importable apart from its systems.
 
 ## What JECS lacks
@@ -41,12 +41,12 @@ Each of these is a Flecs feature with no JECS equivalent. When a Flecs pattern d
 | Flecs feature | In JECS |
 |---|---|
 | Prefabs and `IsA` inheritance | A plain function that spawns an entity and sets its components. Shared data is one table referenced from a component. |
-| Automatic deferral of changes made while iterating | Nothing is deferred for you. Queue on `world.deferred` (fork) or collect and apply after the loop. |
+| Automatic deferral of changes made while iterating | Nothing is deferred for you. Queue on `world.deferred` and apply after the loop. |
 | Systems, pipelines and phases | Systems are functions the game calls in a fixed order. A phase is a naming convention for a group of them. |
 | Query traversal (`up`, `cascade`) and query variables | Walk the hierarchy by hand with `world:parent` and `world:children`. Join by running one query and calling `world:get` on the related entity. |
 | `order_by`, `group_by` | Collect the results and sort them. Iteration order follows archetype layout and is not a contract. |
 | Non-fragmenting relationships (`DontFragment`) and sparse components | Every pair fragments. For a link with many targets store the entity in a component. |
-| Observers over several terms, and custom events | Signals watch one id. Send game events through an array that systems read. |
+| Observers over several terms, and custom events | Signals watch one id. The repository's `modules/OB` has `observer(query, callback)` and `monitor(query)` over a multi-term query, but it is not in the wally package: copy it in if needed. Send game events through an array that systems read. |
 | `in` / `out` annotations and built-in change detection | A recording `changed` listener, or a comparison against the last value handled. |
 | Entity lookup by name or path | Keep your own table from name to entity. |
 | Modules, the REST API, the explorer, timers, the meta addon | Plain Luau modules. Debugging tools are separate projects. |

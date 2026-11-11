@@ -1,21 +1,6 @@
 # Core basics
 
-Applies to `ukendio/jecs` 0.11.0 and `raild3x/jecs` 0.11.0-fork.1 unless marked. Every statement in these files is asserted in [`../verify/`](../verify/).
-
-## Fork vs upstream
-
-| Behaviour | `raild3x/jecs` | `ukendio/jecs` |
-|---|---|---|
-| `world.deferred`, `jecs.deferred(world)` | present | absent |
-| Signal on `pair(R, target)` | fires for that pair | `added` never fires; `changed`/`removed` only if the pair existed when connected |
-| Listener disconnecting during dispatch | others still run | another listener can miss the event |
-| Chained `:with(A):with(B)`, `:without(A):without(B)` | both apply | last call only |
-| `jecs.component()` / `jecs.tag()` after a world exists | `world:component()` raises; debug world raises on `add`/`set`/`remove` | silent id collision |
-| Hook or trait set after first use | debug world raises | ignored |
-| Raw hook over signal listeners | debug world raises | silent |
-| Structural change in `OnRemove` during `delete` | debug world raises | raises only on cascades |
-| `delete` of a dead handle, debug world | raises | ignored |
-| Generation | 24 bits | 16 bits |
+Every statement in these files is asserted in [`../verify/`](../verify/).
 
 ## Setup
 
@@ -26,14 +11,15 @@ local pair = jecs.pair
 
 local Health = jecs.component<<number>>()   -- data
 local Dead = jecs.tag()                     -- tag
+local Team = jecs.tag()                     -- relation
 jecs.meta(Health, jecs.Name, "Health")      -- value on the id
-jecs.meta(Dead, jecs.Exclusive)             -- trait on the id
+jecs.meta(Team, jecs.Exclusive)             -- trait on the relation
 
 local world = jecs.world(RunService:IsStudio()) -- true = debug world
 ```
 
-- Ids, then `jecs.meta`, then the world. `meta` only reaches worlds created after it.
-- After the world exists, make ids with `world:component<<T>>()` (data) and `world:entity()` (tag).
+- Ids, then `jecs.meta`, then the world. A world copies ids and their config when it is created, so `meta` only reaches worlds created after it, and an id made later collides with one the world already handed out.
+- If an id must be made after the world exists: `world:component<<T>>()` (data) or `world:entity()` (tag).
 - `jecs.is_tag(world, id)` tells data from tag.
 
 ## API
@@ -50,21 +36,21 @@ local world = jecs.world(RunService:IsStudio()) -- true = debug world
 | `world:delete(e)` | Deletes `e`, removes it as tag/target elsewhere, runs cleanup traits |
 | `world:contains(e)` | True only for a live handle |
 
-Singleton: `world:set(Time, Time, 12.5)`, `world:get(Time, Time)`.
+Singleton: `world:set(Time, Time, 12.5)`, `world:get(Time, Time)`. World-wide state (frame time, settings) stays in the world this way, where any system can read it, instead of in a module variable only one system sees.
 
 ## Handles
 
 - A handle is slot + generation: `jecs.ECS_ID(e)`, `jecs.ECS_GENERATION(e)`.
-- The newest freed slot is reused first, generation + 1. The old handle stays unequal until the generation wraps (16,777,216 reuses, **fork**; 65,536 upstream).
+- The newest freed slot is reused first, generation + 1. The old handle stays unequal until the generation wraps (16,777,216 reuses), so a stored handle can be compared and checked safely.
 - Reads through a dead handle are safe: `get` nil, `has` false.
-- Check `world:contains` before a write or `pair()`. A pair from a dead handle raises while the slot is free, and silently links to the new occupant once it is reused.
+- Check `world:contains` before a write or `pair()`. A pair id keeps only the slot, not the generation: `pair()` itself never fails. Adding a pair built from a dead handle raises while the slot is free, and silently links to the new occupant once the slot is reused.
 
 ## Mistakes
 
 | Mistake | Result | Instead |
 |---|---|---|
 | `world:component()` as a marker | A column and one of 256 ids ("Too many components" past them) | `jecs.tag()` |
-| `world:set` with a value on a tag | Raises | `world:add` |
+| `world:set` on a tag (any value, nil too) | Raises after the tag is already added, with no `OnAdd` and no `added` signal | `world:add` |
 | `world:add` of a data component | `has` true, `get` nil | `world:set` |
 | Fifth id to `get` / `has` | On a live entity `get` raises "args exceeded"; `has` raises only if the first four are present, else false | Two calls |
 | `world:exists` to validate | True for a dead handle | `world:contains` |

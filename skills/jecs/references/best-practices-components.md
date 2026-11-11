@@ -1,26 +1,43 @@
 # Component design
 
+Start from the systems: list what each one reads and writes. Component boundaries follow from that, not from the nouns in the design document.
+
 ## Split or combine
 
-- Split when a system needs A but not B. Combine what is always read and written together (the parts of a position).
-- Separate data that changes every frame from data that rarely changes.
-- Optional data gets its own component; queries select on presence. If presence would flip every few frames, keep it and switch a value instead.
-- A table value is fine for data one system owns. In-place mutation fires no `OnChange`: call `world:set` if something listens.
-- Roblox instances live in a component, released in `OnRemove`: [feature-hooks](feature-hooks.md).
+| Rule | Because |
+|---|---|
+| Split when a system needs A but not B | Each query then names exactly what it uses, and entities that lack B still match |
+| Combine what is always read and written together (the parts of a position) | Five terms for one concept make every query longer and allow half-set states |
+| Separate data that changes every frame from data that rarely changes | Observers and change tracking on the rare part stop firing every frame |
+| Optional data gets its own component | Queries select on presence, so no `if` and no visit to entities without it |
+| If presence would flip every few frames, keep the component and switch a value | Each flip is a structural change |
+| Do not store what can be computed (speed from velocity) | Every writer of the source would have to update the copy, and one that forgets leaves it stale |
+| Cache a derived value only when it is read far more often than its source changes and is costly to compute | Then one system owns the cache and recomputes it; nothing else writes it |
+
+Composition, not inheritance: no base "Character" component. A player is the entity that has `Health`, `Position` and `Inventory`; an enemy has `Health`, `Position` and `Brain`. Systems work on whatever has the components they name.
+
+## Values
+
+- A table value is fine for data one system owns and reads as a unit (waypoints, a stat block).
+- In-place mutation of a table fires no `OnChange`: call `world:set` if something listens.
+- Make the elements entities instead when they need their own queries, lifetime or links (inventory items that can be dropped, traded, listed per owner): pair each to its holder ([feature-pairs](feature-pairs.md)).
+- Roblox instances live in a component, released in `OnRemove` ([feature-hooks](feature-hooks.md)). Leave spatial hierarchy to the instance tree: store the `Model`, do not mirror its parts as entities.
 
 ## Tag, value or pair
 
-| Data | Model |
-|---|---|
-| Yes/no fact queries filter on (`Stunned`, `Dead`) | Tag |
-| A measurement or payload (`Health`, `Position`) | Data component |
-| Relationship to another entity | Pair: [feature-pairs](feature-pairs.md) |
-| One-of-several state queries select on (`Team`, `Activity`) | Exclusive pair |
-| One-of-several state rewritten on most entities every frame | Value component. A pair switch is a structural change: 4-38x a `set` |
+| Data | Model | Because |
+|---|---|---|
+| Yes/no fact queries filter on (`Stunned`, `Dead`) | Tag | Selecting by presence is 4-100x faster than a value and an `if` |
+| A measurement or payload (`Health`, `Position`) | Data component | |
+| Relationship to another entity | Pair or entity in a component: [feature-pairs](feature-pairs.md) | |
+| One-of-several state that systems select by and that changes rarely (`Team`, `Stance`) | Exclusive pair | One id per state to query on; switching replaces the old state in one step, so two states at once cannot happen |
+| One-of-several state read inside a loop that visits everyone anyway, or switched often (animation state) | Value component | Nothing is saved by filtering, and each pair switch is a structural change costing 4-38x a `set` |
+
+A state that is both selected on and switched often: measure both. The pair wins when few entities match the query; the value wins when most entities switch every frame.
 
 ## Components module
 
-Ids, then config, then the world. Hooks and traits are read once at first use.
+Ids, then config, then the world. Hooks and traits are read when an id is first used; set later they apply to some uses and not others.
 
 ```luau
 --!strict
@@ -49,6 +66,7 @@ With ids and world in separate modules, the world module requires the ids module
 |---|---|---|
 | God component | Every system loads all of it; wide entities make structural changes dearer | Split by reader |
 | One component per primitive field | Queries of five terms for one concept | Combine what travels together |
-| A tag per state (`Idle`, `Walking`) | Two structural changes per switch; invalid combinations possible | Exclusive pair |
-| Entity stored in a component for a relationship | No reverse lookup, no cleanup | Pair |
+| A tag per state (`Idle`, `Walking`) | Two structural changes per switch; invalid combinations possible | Value component, or exclusive pair if selected on |
+| A stored copy of derived data | Stale when one writer forgets it | Compute on read |
+| Entity stored in a component for something that belongs to it | No reverse lookup, no cleanup | Pair |
 | `world:component()` for a marker | A column and one of 256 ids | `jecs.tag()` |

@@ -8,15 +8,16 @@
 
 ## Choosing
 
-| Situation | Use |
-|---|---|
-| Few entities change per frame | Recording listener |
-| Most change every frame, or the component is written in a hot loop | Comparison |
-| Must act immediately | The code making the change, or a hook |
+| Situation | Use | Because |
+|---|---|---|
+| Few entities change per frame | Recording listener | Work is proportional to the changes, not the entity count |
+| Most change every frame, or the component is written in a hot loop | Comparison | A listener would make every `set` about 2x; the comparison costs one read per entity |
+| The old value is needed, or changes arrive without `set` (table mutation, column writes) | Comparison | It keeps the previous value and sees every difference |
+| Must act immediately | The code making the change, or a hook | A listener runs mid-write, where structural changes are unsafe |
 
 ## Patterns
 
-Recording listener: several sets leave one entry. Costs about 2x on every `set` of that component.
+Recording listener: several sets leave one entry.
 
 ```luau
 local changedHealth: { [jecs.Entity]: true } = {}
@@ -35,16 +36,32 @@ local function showHealth()
 end
 ```
 
-Comparison: no cost on `set`, one read per entity per frame. Catches changes that fired no callback (store a copy for table values).
+The listener only records; the system acts later, when the world is not mid-write.
+
+Comparison: keep the last value handled in a pair, so no extra component is declared per tracked component. Store a copy for table values.
 
 ```luau
-for entity, health, shown in world:query(Health, Shown) do
-	if health ~= shown then
-		-- update dependants
-		world:set(entity, Shown, health) -- has Shown: not structural
+local Previous = jecs.tag() -- before jecs.world()
+
+local tracked = world:query(Health, pair(Previous, Health)):cached()
+local untracked = world:query(Health):without(pair(Previous, Health)):cached()
+
+local function showHealth()
+	for entity, health, shown in tracked do
+		if health ~= shown then
+			-- update dependants; `shown` is the old value
+			world:set(entity, pair(Previous, Health), health) -- already present: not structural
+		end
 	end
+	local deferred = world.deferred
+	for entity, health in untracked do -- newly added
+		deferred:set(entity, pair(Previous, Health), health)
+	end
+	deferred:apply()
 end
 ```
+
+Removal shows up as `world:query(pair(Previous, Health)):without(Health)`.
 
 ## Mistakes
 
@@ -53,3 +70,4 @@ end
 | "Dirty" tag added and removed per change | Two structural changes per change | Recording table |
 | Mutating a table value and expecting `changed` | Nothing fires | `world:set` again, or comparison |
 | Only `changed` connected | First value missed | Also `added` |
+| Acting inside the listener | Runs mid-write, once per `set` even when several happen in a frame | Record, act in a system |

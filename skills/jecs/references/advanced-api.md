@@ -8,7 +8,7 @@ jecs.bulk_insert(world, world:entity(), { Speed, Armor, Stunned }, { 16, 5 })
 jecs.bulk_remove(world, entity, { Speed, Armor })
 ```
 
-Use only to spawn a fresh entity with about 8+ plain components and tags, when measured. Slower than `set` at 3 components, equal at 6, 1.57x faster at 12.
+One archetype move instead of one per component. Use only to spawn a fresh entity with about 8+ plain components and tags, when measured: it is slower than `set` at 3 components, equal at 6, 1.57x faster at 12, and it skips the checks below.
 
 | Mistake | Result | Instead |
 |---|---|---|
@@ -40,12 +40,18 @@ world:set(entity, Dynamic, 42)
 - `set`, `add`, `remove` on a dead entity
 - adding a dead entity as an id
 - removing a wildcard pair
-- a structural change in `OnRemove` during a cascaded delete
+- any `add`/`set`/`remove` on an entity from its own `OnRemove` while it is being deleted, direct or cascaded (the delete is abandoned)
+- `delete` of a dead handle
+- a hook or trait set after the id's first use
+- a raw hook on an id that has signal listeners
+- any `add`/`set`/`remove` after a late `jecs.component()` / `jecs.tag()`
 
-**fork** adds: hook or trait set after first use; raw hook over signal listeners; structural change in `OnRemove` during a direct `delete`; `delete` of a dead handle; any `add`/`set`/`remove` after a late `jecs.component()` / `jecs.tag()`.
+Run it in Studio and in tests: on a normal world these are silent, and removing a wildcard pair corrupts the entity ([feature-pairs](feature-pairs.md)).
 
-Not checked: `bulk_insert`; a pair built from a stale handle whose slot was reused.
+Not checked: `bulk_insert`; `world:clear` on a dead handle; a pair built from a stale handle whose slot was reused.
 
 ## world:cleanup
 
 Removes empty archetypes. Cached queries stay correct.
+
+Call it after a mass delete or a wave of retargeting, when many archetypes were left empty. The gain is mostly memory: 1,000 empty archetypes slowed a cached query by 1.2x. Not needed after deleting pair targets, which destroys their archetypes already.

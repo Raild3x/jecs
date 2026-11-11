@@ -1,12 +1,14 @@
 # Cleanup traits
 
-Decide what happens to holders when an id or a pair target is deleted.
+Decide what happens to holders when an id or a pair target is deleted. They are the reason to prefer a pair for anything that belongs to something else: the library keeps the link honest, so no code has to remember to.
 
 ## When to use
 
-- Holders must die with their target (items with owner, parts with vehicle): `(OnDeleteTarget, Delete)`.
-- Everything tagged must die with the tag: `(OnDelete, Delete)`.
-- Holders should just lose the link: nothing, it is the default.
+| Want | Trait |
+|---|---|
+| Holders die with their target (items with owner, parts with vehicle) | `(OnDeleteTarget, Delete)` on the relation |
+| Everything tagged dies with the tag | `(OnDelete, Delete)` on the id |
+| Holders just lose the link (a unit whose squad disbands stays alive) | None: it is the default |
 
 ## API
 
@@ -25,10 +27,12 @@ jecs.meta(Temporary, pair(jecs.OnDelete, jecs.Delete))
 - Cascade order: the parent's remove callbacks run before its children's.
 - `deleted` is true in remove callbacks for every cascaded entity.
 
+`ChildOf` or your own relation: `ChildOf` when there is one true parent and the child is nothing without it. A separate relation when the entity already has a parent, or the link should be queried apart from the hierarchy (`OwnedBy` and `ChildOf` on the same item).
+
 ## Mistakes
 
 | Mistake | Result | Instead |
 |---|---|---|
-| Trait added after the id's first use | Ignored (**fork** debug world raises) | `jecs.meta` before the world |
+| Trait added after the id's first use | Applied unevenly: ignored for ids and pairs already in use, honoured for pairs to new targets, and picked up once the id's archetypes are destroyed (after `world:cleanup()`). `Exclusive` is always ignored. Debug world raises. So some holders die with their target and others do not | `jecs.meta` before the world |
 | Expecting a component that stores an entity to be cleaned | Stale handle stays | Use a pair, or check `world:contains` on read |
-| Collecting cascaded entities for a manual delete | Already dead; **fork** debug world raises | `world:contains` first, or `world.deferred` (**fork**) |
+| Collecting cascaded entities for a manual delete | Already dead; debug world raises | `world.deferred:delete`, which skips dead entities, or `world:contains` first |

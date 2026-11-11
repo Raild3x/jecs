@@ -27,10 +27,46 @@ After the run, copy the scenario's `check.luau` to the project root and `lune ru
 | `upstream/` | `ukendio/jecs` | freeze tag beside an existing `:without`, boss-follower callback, deaths with follower cascade | upstream-only silent failures |
 | `events/` | fork | queued damage, per-hit callback, changed-Health list, inventory notify | events, change tracking |
 | `review/` | fork | find the defects in `game.luau`, write `REVIEW.md` | recognising mistakes |
+| `design/` | fork | ten modelling decisions from `BRIEF.md`: write `components.luau` and `DESIGN.md` | choosing pair, component, tag, value, entity, event queue |
 
 Ticket wording for each scenario is in the "Tickets" section at the end.
 
 ## Rubric
+
+Used from 2026-11-11. The earlier rubric (next heading) gave every correct answer the maximum, so it could not rank skill versions.
+
+Each category is graded 0-4, then weighted into a percentage.
+
+| Grade | Meaning |
+|---|---|
+| 4 | Correct, and handles a case the ticket did not name (see "Earns the 4") |
+| 3 | Correct, no defect. A flawless answer that does only what was asked scores 75% |
+| 2 | One minor defect |
+| 1 | One major defect, or two minor |
+| 0 | A critical defect, or major and minor together |
+
+Start at 3, add 1 if the answer earns it, subtract per defect, floor at 0:
+
+| Severity | Subtract | Test |
+|---|---|---|
+| Critical | 3 | Silently wrong in play: lost or corrupted state, a change that never happens, an id collision |
+| Major | 2 | Works, at a cost someone will have to pay: wrong model for the stated use, a leak, a trap the debug world would catch |
+| Minor | 1 | Works; a reviewer would ask for a change: inconsistency with the skill, a missed convention, unrequested extras |
+
+| Category | Weight | Graded on | Earns the 4 |
+|---|---|---|---|
+| Correctness | 30% | Hidden checks pass; the code runs; no behavioural bug | Covers an input the ticket did not name |
+| Silent-failure safety | 25% | No library trap: late ids or config, in-loop structural change, unchecked handle in a write or `pair()`, unapplied queue | Guards a stale handle or dead target nobody asked about |
+| Model choice | 20% | Pair, component, tag, value, entity or event queue chosen as the skill's tables say for the stated use | Uses a built-in to remove code the ticket implied (a cleanup trait instead of a handler) |
+| Reasoning | 10% | Each decision names the fact that decides it. Scenarios with no written answer: drop this row and rescale | Gives the measured cost of the rejected option |
+| Conventions | 10% | Ids, then `jecs.meta`, then the world; `jecs.tag()` for tags; cached queries at module scope; `--!strict` | Names on ids and a debug world wired to Studio |
+| Economy | 5% | Smallest change; existing exports intact; nothing unrequested | Clearly less code than the other arms for the same result |
+
+Report with every result table: the grade per category, the weighted total, the subagent's total tokens, its wall-clock time and its tool calls. Tokens and time are reported, not scored: they vary with the model more than with the skill.
+
+Grade arms under neutral names. State when the grader was not blind.
+
+### Rubric before 2026-11-11
 
 Implementation answers, 0-2 each, total 10:
 
@@ -69,6 +105,79 @@ Without the skill, agents found the library unprompted and read about 150 of 4,4
 
 Limits: one run per cell; every skill run scored the maximum, so this rubric cannot rank further improvements.
 
+## Results, 2026-11-11: design scenario
+
+Run for the rewrite that made link and state choices depend on use (pair when the holder belongs to the target or the reverse lookup is needed; entity in a component when it merely points; exclusive pair when selected on and rarely changed; value component when read by everyone or switched often) and changed the event queue to a buffer swap. One run per cell, medium effort. Model choice is graded against `design/KEY.md`. The grader knew which arm was which.
+
+| Arm | Correct 30% | Safety 25% | Model 20% | Reasoning 10% | Conventions 10% | Economy 5% | Total | Tokens | Time | Tool calls |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Sonnet, no skill | 3 | 0 | 1 | 2 | 0 | 2 | 35% | 70,065 | 82 s | 14 |
+| Sonnet, skill before | 3 | 4 | 2 | 4 | 3 | 2 | 78% | 64,503 | 55 s | 8 |
+| Opus, skill before | 3 | 4 | 2 | 4 | 4 | 3 | 81% | 69,240 | 82 s | 12 |
+| Sonnet, skill after | 3 | 3 | 3 | 3 | 3 | 2 | 74% | 69,840 | 51 s | 14 |
+| Opus, skill after | 3 | 4 | 4 | 3 | 4 | 3 | 89% | 72,173 | 83 s | 22 |
+| `squads/`, Sonnet, skill after | 3 | 3 | 3 | n/a | 3 | 3 | 75% | 61,535 | 24 s | 5 |
+
+What moved each grade:
+
+| Arm | Defects and credits |
+|---|---|
+| Sonnet, no skill | Safety: the poison system queues removals and never applies them (critical). Model: 20,000 grass entities (major). Reasoning: the grass reason is wrong (minor). Conventions: world before the ids, `world:component()` for tags, `Exclusive` added with `world:add`, per-frame query not cached, no `--!strict`. Economy: systems and a smoke test in the components file (minor) |
+| Sonnet, skill before | Safety +1: checks the attacker is alive before crediting it. Model: 300 permanent bush entities (minor). Reasoning +1: gives the measured cost of each rejected option. Economy: an extra `check.luau` nobody asked for (minor) |
+| Opus, skill before | Safety +1: same attacker check. Model: permanent bush entities (minor). Reasoning +1: measured costs. Conventions +1: names on ids, debug world wired to Studio |
+| Sonnet, skill after | No defect in the first five categories and nothing beyond the brief. Reasons name the deciding fact but no cost. Economy: systems and tests in the components file (minor) |
+| Opus, skill after | Safety +1: attacker check. Model +1: a cleanup trait ends a harvest when the player leaves. Conventions +1: names and debug world. Reasons give no measured cost |
+| `squads/` | 7 of 7 hidden checks; correct, nothing beyond the tickets. Reasoning dropped and the rest rescaled |
+
+Reading the totals:
+
+- The skill is worth about 40 points over no skill, nearly all of it in safety and conventions.
+- The rewrite fixed model choice (2 to 3 and 2 to 4) and cost a point of reasoning on both models: answers stopped quoting measured costs. One run per cell, so that may be noise, but it is the first thing to check in a repeat.
+- Tokens and time did not move with the skill version. Opus took about 1.5x Sonnet's time for a higher total.
+- The after-rewrite runs used the skill before its later corrections (the `:with` reason, fragmentation cost, `world:cleanup`). Not re-run.
+
+The same runs under the key alone, one point per requirement, scored 9, 9.5, 9, 10 and 10: that scale could not separate them.
+
+- The brief states how each piece of data is read and how often it changes, and with those facts given every arm chose the right model for links and state, the control included. The scenario does not show that the old pair-first wording caused wrong choices; that change rests on the measured costs, not on a failing run.
+- No skill: 20,000 grass entities; in code, the world was created before the ids, `world:component()` was used for tags, `Exclusive` was added late with `world:add`, the per-frame query was not cached and the deferred queue was never applied.
+- Skill before the rewrite: both models kept 300 permanent bush entities. Event queues differed: one swapped the buffer inside a bounded number of rounds, one drained in the same frame with `while i <= #hits`.
+- Skill after the rewrite: both models created the harvest entity on demand and wrote the same plain buffer swap.
+- Regression: `squads/` on Sonnet with the rewritten skill passed 7 of 7 hidden checks, with exclusive pairs for membership and stance.
+
+Limits: one run per cell, and a brief that spells out read and change rates. A harder version would leave those to be inferred from the code.
+
+## Results, 2026-11-11: re-run and adversarial review
+
+Re-run against the skill after its first round of corrections (the `:with` reason, fragmentation cost, `world:cleanup`). Same conditions and rubric as above; the grader knew the arms.
+
+| Arm | Correct 30% | Safety 25% | Model 20% | Reasoning 10% | Conventions 10% | Economy 5% | Total | Tokens | Time | Tool calls |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `design/`, Sonnet, run 1 | 3 | 4 | 3 | 3 | 2 | 2 | 78% | 71,587 | 64 s | 10 |
+| `design/`, Sonnet, run 2 | 3 | 4 | 3 | 3 | 2 | 2 | 78% | 67,768 | 55 s | 9 |
+| `design/`, Opus | 2 | 4 | 4 | 3 | 4 | 3 | 81% | 71,351 | 90 s | 18 |
+| `squads/`, Sonnet | 3 | 3 | 3 | n/a | 2 | 3 | 72% | 62,002 | 27 s | 6 |
+
+| Arm | Defects and credits |
+|---|---|
+| Sonnet, both runs | Safety +1: checks the attacker is alive. Conventions: `jecs.world()` with no debug flag (minor). Economy: systems and tests in the components file (minor). One measured cost quoted |
+| Opus | Correctness: thorns left as a placeholder (`local thorns = 0`), so it never triggers (minor). Safety +1: attacker check. Model +1: cleanup trait ends a harvest when the player leaves. Conventions +1: names, debug world wired to Studio |
+| `squads/` | 7 of 7 hidden checks. Conventions: the per-frame heal query is rebuilt uncached in `Game.step` (minor) |
+
+- The two Sonnet runs gave the same ten decisions, the same buffer swap and the same two defects: the wording binds.
+- Both dropped the debug world because the skill said `jecs.world(RunService:IsStudio())` and lune has no `RunService`. The skill now says to pass `true` outside Roblox. Not re-tested.
+- Mean across the five design runs after the rewrite: 80% (74, 78, 78 Sonnet; 89, 81 Opus), against 78% and 81% before it.
+
+Adversarial review, same day: one reviewer on the session's model, told to assume the skill was badly made and to prove it by running code. 201,411 tokens, 11 minutes, 39 tool calls. One critical, two major and eight minor findings, all reproduced and corrected, each with a new assertion in `verify/facts.luau` where it is a library behaviour:
+
+| Severity | Finding | Now |
+|---|---|---|
+| Critical | "No `world:contains` check is needed" for the deferred queue: only the entity is checked. A queued pair whose target dies raises at `apply`, or links to the slot's next occupant | feature-deferred states it, with a mistake row |
+| Major | upstream-differences claimed everything unlisted behaves the same. Upstream silently swaps data on an entity that lost its last component and gets one again, and `bulk_insert` drops `false` | Sentence removed, both rows added with a tested workaround |
+| Major | A hook or trait set late is not simply ignored: it applies to pairs with new targets and after the id's archetypes are destroyed | Four files corrected |
+| Minor | `set` of an existing component raises in a debug world from `OnRemove` during a delete; `world:set` on a tag raises after adding it; a stored uncached query resumes after a `break`; `pair()` never raises, adding the pair does; debug cost is 9x on a pair `set`; the retarget cost depends on whether the move happened before, not on target count; the "4x with 100 listeners" ratio depended on the baseline; `modules/OB` gives multi-term observers | Corrected in place |
+
+The reviewer could not break any code example, and re-measured 20 cost figures: about half inside the skill's ranges, the rest within about 2x (ranges widened), and one wrong in kind (retarget cost, corrected above).
+
 ## Tickets
 
 **tickets:** (1) `Game.stun(unit)` / `Game.unstun(unit)`; a stunned unit takes no poison in `Game.step`. (2) No unit's Health may exceed 100, whoever writes it; other modules call `Game.world:set` directly, so enforce it with a hook. (3) At the end of `Game.step` remove every unit with Health <= 0; followers of a removed unit stay alive. (4) `Game.countPoisoned()`, called every frame.
@@ -78,5 +187,7 @@ Limits: one run per cell; every skill run scored the maximum, so this rubric can
 **upstream:** (1) `Game.freeze(unit)` / `Game.thaw(unit)`; a frozen unit takes no poison; shielded units must still take none. (2) `Game.onBossFollower(callback)`: `callback(unit)` whenever a unit starts following `Game.boss`, not for others. (3) At the end of `Game.step` remove every unit with Health <= 0; followers of a removed unit go with it, also when other code deletes a leader.
 
 **events:** (1) `Game.damage(target, amount)`: many calls per frame, from inside query loops, several per target; nothing changes until `Game.step`, which applies every hit. (2) `Game.onHit(callback)`: `callback(target, amount)` once per applied hit. (3) `Game.takeChangedHealth()`: live units whose Health was written since the last call, each once, new spawns included; others write Health directly; thousands of units, few change. (4) `Game.addItem(unit, item)`: listeners on `world:changed(Inventory)` must be notified per item.
+
+**design:** the brief is `design/BRIEF.md`, handed over as is.
 
 **review:** "`src/game.luau` ships in 20 minutes. Review it for defects in how it uses JECS. Write findings to `REVIEW.md`: line, what is wrong, what happens at runtime, the fix. Real defects only."
