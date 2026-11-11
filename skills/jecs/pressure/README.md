@@ -326,6 +326,21 @@ Runs that opened each file, of 16:
 
 Tooling for this is not in the repo: a project builder and a transcript reader (`setup.sh`, `nav_reads.py`).
 
+Follow-up, same day: four more design runs on the committed skill (no example) all kept grass out of the world and swapped the array before draining. With no failing run there is nothing for a quick-reference row to fix, so the two rules were not promoted.
+
+## Results, 2026-11-11: does the description trigger
+
+The first test in which nothing told the agent to read the skill. The skill was installed as a project skill in an otherwise empty folder and `claude -p <query>` run on Sonnet, three times per query, beside the tester's other installed skills. A run counts when the Skill tool is called with `jecs` or its SKILL.md is read.
+
+| Queries | Should trigger | Triggered |
+|---|---|---|
+| A hook that misses the first `set`; pair or component for a target; a stored query empty on the second pass; reviewing a delete inside a query loop; porting a Flecs pattern; adding a stun tag to a file with a jecs world; ECS design for a Roblox game with no library named; cascade on squad delete; a deferred change that never applies; a loop that skips entities | yes | 30 of 30 runs |
+| roblox-ts with `@rbxts/jecs`; Matter; Flecs in C++; Bevy; Luau generics; Unity DOTS; metatable classes; Python `esper`; react-lua; PathfindingService | no | 0 of 30 runs |
+
+- The description needs no change. The suspected false trigger on roblox-ts did not happen.
+- Limits: one model, an empty project folder (no `wally.toml` to hint either way), 20 queries, and no query about replication or scheduler choice, which the skill also excludes.
+- The queries and the runner (`trigger_queries.json`, `trigger_eval.py`) are not in the repo. The runner passes the query on stdin: on Windows a multi-line query on the command line never starts.
+
 ## Tickets
 
 **tickets:** (1) `Game.stun(unit)` / `Game.unstun(unit)`; a stunned unit takes no poison in `Game.step`. (2) No unit's Health may exceed 100, whoever writes it; other modules call `Game.world:set` directly, so enforce it with a hook. (3) At the end of `Game.step` remove every unit with Health <= 0; followers of a removed unit stay alive. (4) `Game.countPoisoned()`, called every frame.
