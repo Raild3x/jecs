@@ -1668,6 +1668,68 @@ TEST("world:delete()", function()
 		CHECK(not world:has(victim, pair(R3, T)))
 		CHECK(not world:has(victim, pair(R4, T)))
 	end
+
+	-- The cascade strips pair(R, c) from every y, which creates archetypes
+	-- holding the deleted id while its records are being traversed
+	local function delete_policy_with_archetypes_created_by_cascade(as_relation: boolean)
+		local world = jecs.world()
+		local R = world:entity()
+		local t = world:entity()
+
+		local e = world:entity()
+		world:add(e, pair(jecs.OnDelete, jecs.Delete))
+		local id = if as_relation then pair(e, t) else e
+
+		-- Spreads the archetype ids out so the records are not a plain array
+		local function churn(n)
+			for _ = 1, n do
+				local tag = world:entity()
+				local d = world:entity()
+				world:add(d, tag)
+			end
+		end
+
+		local N = 50
+		local cs, ys = {}, {}
+
+		churn(7)
+		for i = 1, N do
+			local c = world:entity()
+			world:add(c, id)
+			cs[i] = c
+		end
+
+		for i = 1, N do
+			churn(23)
+			local F = world:entity()
+			local y = world:entity()
+			world:add(y, F)
+			world:add(y, pair(R, cs[i]))
+			world:add(y, id)
+			ys[i] = y
+		end
+
+		world:delete(e)
+
+		local survivors = 0
+		for i = 1, N do
+			if world:contains(cs[i]) then
+				survivors += 1
+			end
+			if world:contains(ys[i]) then
+				survivors += 1
+			end
+		end
+		return survivors
+	end
+
+	do CASE "#322 (OnDelete, Delete) on a component should delete entities in archetypes created by the cascade"
+		CHECK(delete_policy_with_archetypes_created_by_cascade(false) == 0)
+	end
+
+	do CASE "#322 (OnDelete, Delete) on a relation should delete entities in archetypes created by the cascade"
+		CHECK(delete_policy_with_archetypes_created_by_cascade(true) == 0)
+	end
 end)
 
 TEST("world:each()", function()

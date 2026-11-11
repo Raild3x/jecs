@@ -3560,16 +3560,24 @@ local function world_new(DEBUG: boolean?)
 		if idr then
 			local flags = idr.flags
 			if (bit32.btest(flags, ECS_ID_DELETE) == true) then
-				for archetype_id in idr.records do
-					local idr_archetype = archetypes[archetype_id]
+				-- NOTE: A cascaded delete can create archetypes with this id
+				-- while the records are being traversed, and a traversal can
+				-- skip keys that are inserted during it. So the records are
+				-- traversed again for as long as a pass has deleted an entity.
+				local alive_count
+				repeat
+					alive_count = entity_index.alive_count
+					for archetype_id in idr.records do
+						local idr_archetype = archetypes[archetype_id]
 
-					local entities = idr_archetype.entities
-					local n = #entities
-					for i = n, 1, -1 do
-						world_delete(world, entities[i])
+						local entities = idr_archetype.entities
+						local n = #entities
+						for i = n, 1, -1 do
+							world_delete(world, entities[i])
+						end
+						archetype_destroy(world, idr_archetype)
 					end
-					archetype_destroy(world, idr_archetype)
-				end
+				until entity_index.alive_count >= alive_count
 			else
 				local on_remove = idr.on_remove
 				if on_remove then
@@ -3694,15 +3702,21 @@ local function world_new(DEBUG: boolean?)
 			local flags = idr_r.flags
 			local has_delete_policy = bit32.btest(flags, ECS_ID_DELETE)
 			if has_delete_policy then
-				for archetype_id in archetype_ids do
-					local idr_r_archetype = archetypes[archetype_id]
-					local entities = idr_r_archetype.entities
-					local n = #entities
-					for i = n, 1, -1 do
-						world_delete(world, entities[i])
+				-- NOTE: Traversed again for as long as a pass has deleted an
+				-- entity, for the same reason as the records of `idr` above.
+				local alive_count
+				repeat
+					alive_count = entity_index.alive_count
+					for archetype_id in archetype_ids do
+						local idr_r_archetype = archetypes[archetype_id]
+						local entities = idr_r_archetype.entities
+						local n = #entities
+						for i = n, 1, -1 do
+							world_delete(world, entities[i])
+						end
+						archetype_destroy(world, idr_r_archetype)
 					end
-					archetype_destroy(world, idr_r_archetype)
-				end
+				until entity_index.alive_count >= alive_count
 			else
 				local counts = idr_r.counts
 				local records = idr_r.records
