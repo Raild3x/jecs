@@ -61,7 +61,7 @@ Design choices only matter for speed at thousands of entities touched every fram
 | Structural change or a raise in a remove hook/listener | Undefined; operation aborts half done | Queue on `world.deferred`; keep callbacks trivial |
 | `jecs.component/tag/meta` after `jecs.world()` | Id collides with a world id (`world:component()` raises, debug world raises on writes); `meta` ignored | Ids and config in one module, then the world |
 | Hook or trait set at runtime | Applied unevenly: ignored for ids and pairs already in use, honoured for pairs to new targets | `jecs.meta`, or a signal |
-| Write or `pair()` through a stored handle, directly or queued on `world.deferred` | Write ignored; adding the pair raises, or once the slot is reused links to its new occupant | `world:contains` first; for a queued pair, check the target when applying |
+| Write or `pair()` through a stored handle | Write ignored; adding the pair raises, or once the slot is reused links to its new occupant | `world:contains` first |
 
 Topic mistakes are in each reference file.
 

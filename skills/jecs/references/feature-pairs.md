@@ -125,4 +125,4 @@ world:set(car, Parts, { hull = hull, motor = motor })
 | `Exclusive` or a cleanup trait added after first use | `Exclusive` is ignored. A cleanup trait applies only to pairs with targets first used afterwards | `jecs.meta` |
 | Expecting several rows from a wildcard query | One row per entity | `world:targets(e, R)` |
 | `world:set` on `pair(tagRelation, entity)` | Raises after the pair is already added, with no `OnAdd` | Make the relation a component |
-| `world:remove(e, pair(R, jecs.Wildcard))` | Debug world raises. Normal world: the pairs stay and the entity is corrupted (`get` returns nil, queries yield it twice) | Collect `world:targets(e, R)`, then remove each pair |
+| `world:remove(e, pair(R, jecs.Wildcard))` | Raises when the entity holds such a pair; nothing is removed | Collect `world:targets(e, R)`, then remove each pair |

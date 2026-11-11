@@ -46,7 +46,7 @@ world:set(entity, Dynamic, 42)
 - a raw hook on an id that has signal listeners
 - any `add`/`set`/`remove` after a late `jecs.component()` / `jecs.tag()`
 
-Run it in Studio and in tests: on a normal world these are silent, and removing a wildcard pair corrupts the entity ([feature-pairs](feature-pairs.md)).
+Run it in Studio and in tests: on a normal world all but the wildcard removal are silent.
 
 Not checked: `bulk_insert`; `world:clear` on a dead handle; a pair built from a stale handle whose slot was reused.
 

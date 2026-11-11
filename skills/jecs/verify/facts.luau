@@ -1002,8 +1002,16 @@ do
 	local h4, t4 = w4:entity(), w4:entity()
 	w4:set(h4, D4, 7)
 	w4:add(h4, pair(R4, t4))
-	w4:remove(h4, pair(R4, jecs.Wildcard))
-	check("normal world: removing a wildcard pair leaves the pair and loses the data", w4:has(h4, pair(R4, t4)) and w4:get(h4, D4) == nil)
+	if FORK then
+		check("fork: removing a wildcard pair raises on a normal world and changes nothing", raises(function()
+			w4:remove(h4, pair(R4, jecs.Wildcard))
+		end) and raises(function()
+			w4:remove(h4, pair(jecs.Wildcard, t4))
+		end) and w4:has(h4, pair(R4, t4)) and w4:get(h4, D4) == 7)
+	else
+		w4:remove(h4, pair(R4, jecs.Wildcard))
+		check("upstream: removing a wildcard pair leaves the pair and loses the data", w4:has(h4, pair(R4, t4)) and w4:get(h4, D4) == nil)
+	end
 
 	local w5 = jecs.world()
 	local C5 = w5:component()
@@ -1129,18 +1137,15 @@ if FORK then
 	deferred:add(unit, pair(InSquad, squad))
 	deferred:set(other, Health, 9)
 	w:delete(squad)
-	check("deferred: a queued pair whose target died raises at apply", raises(function()
-		deferred:apply()
-	end) and w:get(other, Health) == nil)
 	deferred:apply()
-	check("deferred: ... and the changes after it are made by the next apply", w:get(other, Health) == 9)
+	check("deferred: a queued pair whose target died is skipped, the changes after it are made", not w:has(unit, pair(InSquad, jecs.Wildcard)) and w:get(other, Health) == 9)
 
 	local unit2, squad2 = w:entity(), w:entity()
 	deferred:add(unit2, pair(InSquad, squad2))
 	w:delete(squad2)
 	local stranger = w:entity()
 	deferred:apply()
-	check("deferred: once the slot is reused the queued pair links to the new occupant", w:target(unit2, InSquad) == stranger)
+	check("deferred: a queued pair is not linked to the entity that reused its target slot", w:contains(stranger) and w:target(unit2, InSquad) == nil)
 
 	local dbg = jecs.world(true)
 	local D = dbg:component()

@@ -891,8 +891,11 @@ local function WORLD_TARGET(world: world, entity: i53, relation: i53, index: num
 end
 
 local function ECS_ID_IS_WILDCARD(e: i53): boolean
-	local first = ECS_ENTITY_T_HI(e)
-	local second = ECS_ENTITY_T_LO(e)
+	-- The halves of a pair id sit above ECS_PAIR_OFFSET, so they are read with
+	-- the pair accessors. ECS_ENTITY_T_HI kept the offset in the first half
+	-- and never matched a wildcard relation.
+	local first = ECS_PAIR_FIRST(e)
+	local second = ECS_PAIR_SECOND(e)
 	return first == EcsWildcard or second == EcsWildcard
 end
 
@@ -2817,6 +2820,7 @@ local DEFERRED_ADD = 1
 local DEFERRED_SET = 2
 local DEFERRED_REMOVE = 3
 local DEFERRED_DELETE = 4
+local DEFERRED_GUARD = 5
 
 -- `world.deferred` is the queue every world is created with, and
 -- `jecs.deferred(world)` makes a separate one. See the `Deferred` type.
@@ -2849,7 +2853,21 @@ local function deferred_new(world: world): deferred
 		local i = 1
 		local ok, err = pcall(function()
 			while i <= count do
-				local kind, entity, id, value = batch[i], batch[i + 1], batch[i + 2], batch[i + 3]
+				local kind = batch[i]
+				if kind == DEFERRED_GUARD then
+					-- The two entities the next change's pair was built from.
+					-- A pair id does not hold their generations, so without
+					-- this a pair whose target died would raise or, once the
+					-- slot is reused, name the entity that took its place.
+					local first, second = batch[i + 1], batch[i + 2]
+					i += 4
+					if not (first and second and world:contains(first) and world:contains(second)) then
+						i += 4
+						continue
+					end
+					kind = batch[i]
+				end
+				local entity, id, value = batch[i + 1], batch[i + 2], batch[i + 3]
 				-- Advanced before the change is made, so that one that raises
 				-- is not kept
 				i += 4
@@ -2886,15 +2904,24 @@ local function deferred_new(world: world): deferred
 		spare = batch
 	end
 
+	-- Queues a change that names an id. A pair is preceded by the entities it
+	-- was built from, which apply checks before it makes the change.
+	local function push_id(kind: number, entity: i53, id: i53, value: any)
+		if ECS_IS_PAIR(id) then
+			push(DEFERRED_GUARD, ecs_pair_first(world, id) or false, ecs_pair_second(world, id) or false, false)
+		end
+		push(kind, entity, id, value)
+	end
+
 	return {
 		add = function(_, entity: i53, id: i53)
-			push(DEFERRED_ADD, entity, id, false)
+			push_id(DEFERRED_ADD, entity, id, false)
 		end,
 		set = function(_, entity: i53, id: i53, value: any)
-			push(DEFERRED_SET, entity, id, if value == nil then NULL else value)
+			push_id(DEFERRED_SET, entity, id, if value == nil then NULL else value)
 		end,
 		remove = function(_, entity: i53, id: i53)
-			push(DEFERRED_REMOVE, entity, id, false)
+			push_id(DEFERRED_REMOVE, entity, id, false)
 		end,
 		delete = function(_, entity: i53)
 			push(DEFERRED_DELETE, entity, false, false)
@@ -3702,6 +3729,14 @@ local function world_new(DEBUG: boolean?)
 		local from = record.archetype
 
 		if from.columns_map[id] then
+			-- A wildcard pair is in the map of every archetype that holds a
+			-- matching pair, but it is not one of the archetype's ids. Moving
+			-- the entity as if it were left the pairs in place and gave the
+			-- entity another row's data.
+			if ECS_IS_PAIR(id) and ECS_ID_IS_WILDCARD(id) then
+				error("world:remove cannot take a wildcard pair. Iterate world:targets(entity, relation) and remove each pair.", 2)
+			end
+
 			local idr = world.component_index[id]
 			local on_remove = idr.on_remove
 

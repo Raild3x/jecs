@@ -31,8 +31,8 @@ local mine = jecs.deferred(world)      -- separate queue
 | `deferred:apply()` | Runs the queue in order, empties it |
 
 - Nothing is visible before `apply`.
-- A change whose entity is dead at `apply` is skipped, including one a cascade just deleted. No `world:contains` check on the entity is needed.
-- Only the entity is checked, not a pair's target. A queued `add` or `set` of `pair(R, target)` whose target dies before `apply` raises while the slot is free (the changes queued after it wait for the next `apply`) and links to the new occupant once the slot is reused. Queue the pair after anything that can delete its target, or apply before the delete.
+- A change whose entity is dead at `apply` is skipped, including one a cascade just deleted. No `world:contains` check is needed.
+- A queued change on `pair(R, target)` is also skipped when the relation or the target died after it was queued, even if another entity has reused the slot. The queue records both entities when the change is queued. The `pair()` you pass must still be built from live handles.
 - A change queued by a hook or listener during `apply` runs before the next queued change.
 - An error reaches the caller; the failing change is dropped, the rest stay queued. A change can fail half done: a `set` on a tag raises after adding the tag.
 - Runs through the world's methods: debug checks apply.
@@ -56,4 +56,3 @@ Who calls `apply`:
 | Queuing and never applying | Nothing happens | `apply` after the loop |
 | Expecting other systems to see a queued delete | Invisible until applied | Marker tag: [best-practices-systems](best-practices-systems.md) |
 | A listener queuing the change that triggers it | Stack overflow | Guard the listener |
-| Queuing a pair, then deleting its target before `apply` | Raises, or links to the slot's next occupant | Apply first, or check `world:contains(target)` in the code that applies |

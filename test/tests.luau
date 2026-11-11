@@ -2656,6 +2656,77 @@ TEST("world.deferred", function()
 		CHECK(not world:has(f1, pair(Follows, __)))
 	end
 
+	do CASE "should skip a queued pair whose target was deleted before apply"
+		local world = jecs.world()
+		local A = world:component() :: Id<number>
+		local InSquad = world:entity()
+		local unit, other, squad = world:entity(), world:entity(), world:entity()
+
+		local d = world.deferred
+		d:add(unit, pair(InSquad, squad))
+		d:set(other, A, 9)
+		world:delete(squad)
+
+		local ok = pcall(d.apply)
+		CHECK(ok)
+		CHECK(not world:has(unit, pair(InSquad, __)))
+		-- the changes queued after it are still made
+		CHECK(world:get(other, A) == 9)
+	end
+
+	do CASE "should not link a queued pair to the entity that reused its target's slot"
+		local world = jecs.world()
+		local Owes = world:component() :: Id<number>
+		local InSquad = world:entity()
+		local unit, squad, lender = world:entity(), world:entity(), world:entity()
+
+		local d = world.deferred
+		d:add(unit, pair(InSquad, squad))
+		d:set(unit, pair(Owes, lender), 5)
+		world:delete(squad)
+		world:delete(lender)
+		local stranger1, stranger2 = world:entity(), world:entity()
+		d:apply()
+
+		CHECK(not world:has(unit, pair(InSquad, __)))
+		CHECK(not world:has(unit, pair(Owes, __)))
+		CHECK(world:contains(stranger1) and world:contains(stranger2))
+	end
+
+	do CASE "should not remove the pair of the entity that reused a queued pair's target slot"
+		local world = jecs.world()
+		local InSquad = world:entity()
+		local unit, squad = world:entity(), world:entity()
+		world:add(unit, pair(InSquad, squad))
+
+		local d = world.deferred
+		d:remove(unit, pair(InSquad, squad))
+		world:delete(squad)
+		local newSquad = world:entity()
+		world:add(unit, pair(InSquad, newSquad))
+		d:apply()
+
+		CHECK(world:target(unit, InSquad) == newSquad)
+	end
+
+	do CASE "should still apply a queued pair whose target is alive, and a pair with a component target"
+		local world = jecs.world()
+		local Position = world:component() :: Id<number>
+		local InSquad, Begin = world:entity(), world:entity()
+		local unit, squad = world:entity(), world:entity()
+
+		local d = world.deferred
+		d:add(unit, pair(InSquad, squad))
+		d:set(unit, pair(Begin, Position), 3)
+		d:apply()
+		CHECK(world:target(unit, InSquad) == squad)
+		CHECK(world:get(unit, pair(Begin, Position)) == 3)
+
+		d:remove(unit, pair(InSquad, squad))
+		d:apply()
+		CHECK(not world:has(unit, pair(InSquad, squad)))
+	end
+
 	do CASE "jecs.deferred should make a queue that is separate from world.deferred"
 		local world = jecs.world()
 		local A = world:component() :: Id<string>
@@ -4036,6 +4107,45 @@ TEST("world:query()", function()
 end)
 
 TEST("world:remove()", function()
+	do CASE "should raise on a wildcard pair instead of corrupting the entity"
+		local world = jecs.world()
+		local A = world:component() :: Id<number>
+		local R = world:entity()
+		local e, t = world:entity(), world:entity()
+		world:set(e, A, 7)
+		world:add(e, pair(R, t))
+
+		local ok = pcall(world.remove, world, e, pair(R, __))
+		CHECK(not ok)
+		ok = pcall(world.remove, world, e, pair(__, t))
+		CHECK(not ok)
+		CHECK(world:has(e, pair(R, t)))
+		CHECK(world:get(e, A) == 7)
+		local rows = 0
+		for _ in world:query(A) do
+			rows += 1
+		end
+		CHECK(rows == 1)
+
+		-- an entity without such a pair is left alone, as before
+		local bare = world:entity()
+		world:set(bare, A, 1)
+		world:remove(bare, pair(R, __))
+		CHECK(world:get(bare, A) == 1)
+	end
+
+	do CASE "debug world should reject a pair with a wildcard relation as it does a wildcard target"
+		local world = jecs.world(true)
+		local R = world:entity()
+		local e, t = world:entity(), world:entity()
+		world:add(e, pair(R, t))
+
+		CHECK(not pcall(world.remove, world, e, pair(R, __)))
+		CHECK(not pcall(world.remove, world, e, pair(__, t)))
+		CHECK(not pcall(world.add, world, e, pair(__, t)))
+		CHECK(world:has(e, pair(R, t)))
+	end
+
 	do
 		CASE("should allow remove a component that doesn't exist on entity")
 		local world = jecs.world()

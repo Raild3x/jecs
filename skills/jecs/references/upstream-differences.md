@@ -15,6 +15,9 @@ The rest of this skill describes the fork `raild3x/jecs` 0.11.0-fork.1. Read thi
 | Raw hook on an id that has signal listeners | Debug world raises | Silences them, or is ignored | `jecs.meta`, or another signal |
 | Structural change in `OnRemove` during `delete` | Debug world raises | Raises only on cascades | Same rule |
 | `delete` of a dead handle, debug world | Raises | Ignored | `world:contains` first |
+| A queued pair whose target dies before `apply` | Skipped | No queue upstream | In collect-then-apply, check `world:contains(target)` before adding the pair |
+| `world:remove(e, pair(R, jecs.Wildcard))`, normal world | Raises, nothing changes | The pairs stay and the entity is corrupted: `get` returns nil, queries yield it twice | Collect `world:targets(e, R)`, remove each |
+| A pair with a wildcard relation, `pair(jecs.Wildcard, t)`, in a debug world | Rejected like a wildcard target | Not detected | Never pass one to `add`, `set` or `remove` |
 | An entity that lost its last component and then gets one again | Correct | Its data is silently swapped with another entity's when a second emptied entity is deleted | Avoid removing an entity's last component; keep a permanent tag on it |
 | `bulk_insert` with a `false` value | Stored | Dropped: `get` returns nil | `world:set` for boolean values |
 | Generation | 24 bits: a handle stays unequal for 16,777,216 reuses of its slot | 16 bits: 65,536 | Do not keep handles across very long sessions without `world:contains` |
@@ -43,4 +46,4 @@ A structural change wanted from a remove hook or listener has no queue to go to:
 
 ## Checking
 
-Copy the project's `jecs.luau` into [`../verify/`](../verify/) and run `lune run facts.luau` and `lune run examples.luau`. The scripts detect upstream and assert the upstream column above (136 and 28 assertions pass there; 155 and 31 on the fork).
+Copy the project's `jecs.luau` into [`../verify/`](../verify/) and run `lune run facts.luau` and `lune run examples.luau`. The scripts detect upstream and assert the upstream column above (136 and 28 assertions pass there; 154 and 31 on the fork).
