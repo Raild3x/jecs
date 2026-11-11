@@ -177,22 +177,49 @@ do
 	check("state: a query selects one target of an exclusive pair", blue == 1)
 end
 do
-	-- "who points at me" over many changing targets: a table built for one frame
-	local a, b, c, prey = world:entity(), world:entity(), world:entity(), world:entity()
-	world:set(a, Target, prey)
-	world:set(b, Target, prey)
-	world:set(c, Target, a)
-
-	local hunters: { [jecs.Entity]: { jecs.Entity } } = {}
-	for entity, target in targeting do
-		local list = hunters[target]
-		if not list then
-			list = {}
-			hunters[target] = list
-		end
-		table.insert(list, entity)
+	-- "who points at me": a query on the pair
+	local owner, other = world:entity(), world:entity()
+	local a, b, c = world:entity(), world:entity(), world:entity()
+	world:add(a, pair(OwnedBy, owner))
+	world:add(b, pair(OwnedBy, owner))
+	world:add(c, pair(OwnedBy, other))
+	local owned = 0
+	for _ in world:query(pair(OwnedBy, owner)) do
+		owned += 1
 	end
-	check("reverse lookup: built once from the forward component", #hunters[prey] == 2 and #hunters[a] == 1)
+	check("reverse lookup: a pair query finds the holders of one target", owned == 2)
+	check("forward lookup: world:target reads the owner", world:target(a, OwnedBy) == owner)
+end
+do
+	-- hierarchy: a value inherited from the nearest ancestor that has it
+	local Faction = world:component<<string>>()
+	local function inherited<T>(entity: jecs.Entity, id: jecs.Id<T>): T?
+		local current: jecs.Entity? = entity
+		while current do
+			local value = world:get(current, id)
+			if value ~= nil then
+				return value
+			end
+			current = world:parent(current)
+		end
+		return nil
+	end
+	local squad, soldier, weapon = world:entity(), world:entity(), world:entity()
+	world:set(squad, Faction, "red")
+	world:add(soldier, pair(jecs.ChildOf, squad))
+	world:add(weapon, pair(jecs.ChildOf, soldier))
+	check("hierarchy: a value is found by walking world:parent", inherited(weapon, Faction) == "red" and inherited(squad, Health) == nil)
+
+	-- composite: ChildOf owns the lifetime, a component holds direct handles
+	local Parts = world:component<<{ hull: jecs.Entity, motor: jecs.Entity }>>()
+	local car, hull, motor = world:entity(), world:entity(), world:entity()
+	world:add(hull, pair(jecs.ChildOf, car))
+	world:add(motor, pair(jecs.ChildOf, car))
+	world:set(car, Parts, { hull = hull, motor = motor })
+	local parts = world:get(car, Parts)
+	check("composite: parts are reached directly through stored handles", parts ~= nil and parts.motor == motor)
+	world:delete(car)
+	check("composite: ChildOf deletes the parts with the whole", not world:contains(hull) and not world:contains(motor))
 end
 do
 	local Speed = world:component<<number>>()

@@ -1,44 +1,36 @@
 # Component hooks
 
-A hook is the one callback of each kind that an id's owner installs. It is read once, when the id is first used.
+One callback per kind per id, installed by the id's owner, read once at the id's first use.
+
+## When to use
+
+- The component's own invariant: clamp or validate a value, release what the value owns.
+- Not for gameplay logic (a system) or observers added later (a signal: [feature-signals](feature-signals.md)).
+
+## API
 
 ```luau
-local Health = jecs.component<<number>>()
-
 jecs.meta(Health, jecs.OnAdd, function(entity, id, value) end)
 jecs.meta(Health, jecs.OnChange, function(entity, id, value) end)
 jecs.meta(Health, jecs.OnRemove, function(entity, id, deleted) end)
-
 local world = jecs.world()
 ```
 
-**Install hooks only through `jecs.meta`, before the world exists.** `world:set(id, jecs.OnAdd, fn)` at runtime is ignored once the id is in use, and when the id already has signal listeners it either silences them or is ignored itself (**fork:** a debug world raises in both cases). For a callback that is connected later or can be disconnected, use a signal: [feature-signals.md](feature-signals.md).
-
-## When each runs
-
-| Hook | Runs | Arguments |
+| Hook | Runs | Gets |
 |---|---|---|
-| `OnAdd` | when the id is added | the value given to `set`, nil for `add` |
-| `OnChange` | on every later `set` | the new value |
-| `OnRemove` | before the id leaves the entity | `deleted`: true when the whole entity is being deleted, cascades included; nil for `remove` and `clear` |
+| `OnAdd` | Id added (first `set`, or `add`) | The value; nil for `add` |
+| `OnChange` | Every later `set` | The new value |
+| `OnRemove` | Before the id leaves | `deleted`: true if the entity is being deleted (cascades too); nil for `remove`, `clear` |
 
-- The first `set` runs only `OnAdd`. `world:add` of an id the entity already has runs nothing. **To see every write, install both `OnAdd` and `OnChange`.**
-- The value is stored before `OnAdd` and `OnChange` run. A hook installed through `jecs.meta` runs before the signal listeners.
-- `OnChange` means "set was called": it runs when the new value equals the old one, and never when a table value is mutated in place.
-- `OnChange` runs after the new value is stored, so the value it replaced is gone. To release a replaced value, such as a Roblox instance, keep your own table from entity to the current value.
-- Inside `OnRemove`, `world:get(entity, id)` still returns the value.
-- A hook on a relation runs for its pairs, and `id` is then the full pair id.
-- `jecs.bulk_insert` runs hooks too.
+- The value is stored before `OnAdd` / `OnChange` run. The old value is gone.
+- In `OnRemove`, `world:get(entity, id)` still returns the value.
+- A hook runs before signal listeners.
+- A hook on a relation runs for its pairs; `id` is the pair id.
+- `bulk_insert` runs hooks.
 
-## Rules
+## Patterns
 
-- **A remove hook only reads and releases.** A structural change inside it is undefined behaviour. Queue it on `world.deferred` (**fork**): [feature-deferred.md](feature-deferred.md).
-- **Keep every hook too simple to raise.** A hook that raises aborts the operation where it stands: after a `set` the value is already stored, and a `delete` leaves the entity alive.
-- **Gameplay logic goes in systems.** A hook is for an invariant of the component itself, such as releasing what the value owns.
-
-## A hook that corrects its value
-
-A hook may call `world:set` on its own component to clamp or validate what was written. The component is already on the entity, so this is not structural:
+Clamp. Needs both hooks to cover every write; the nested `set` is not structural.
 
 ```luau
 local world: jecs.World
@@ -47,26 +39,37 @@ local function capHealth(entity, id, value: number)
 		world:set(entity, id, 100)
 	end
 end
-jecs.meta(Health, jecs.OnAdd, capHealth)    -- the first set
-jecs.meta(Health, jecs.OnChange, capHealth) -- every later set
-
+jecs.meta(Health, jecs.OnAdd, capHealth :: any)
+jecs.meta(Health, jecs.OnChange, capHealth :: any)
 world = jecs.world()
 ```
 
-The correction runs the callbacks again, inside the first call. A `world:changed` listener is therefore called with the corrected value first and the original value last, while the stored value is the corrected one. **A listener on a component whose hook corrects it reads `world:get`, not its value argument.**
+`:: any` is needed under `--!strict`: the hook type is generic over every component.
 
-## A hook that needs the world
+Listeners then see the corrected value first and the original last: they must read `world:get`.
 
-A hook is installed before the world exists, so it closes over a variable that is assigned afterwards:
+Release what the value owns. The hook closes over `world`, assigned after.
 
 ```luau
 local world: jecs.World
-jecs.meta(Model, jecs.OnRemove, function(entity, id)
-	local model = world:get(entity, id)
+jecs.meta(Model, jecs.OnRemove, function(entity)
+	local model = world:get(entity, Model)
 	if model then
 		model:Destroy()
 	end
 end)
-
 world = jecs.world()
 ```
+
+If the component can be set again, track the current instance per entity and release the old one in `OnChange`.
+
+## Mistakes
+
+| Mistake | Result | Instead |
+|---|---|---|
+| `world:set(id, jecs.OnAdd, fn)` after the id is in use | Ignored (**fork** debug world raises) | `jecs.meta` before the world |
+| Raw hook on an id that has signal listeners | Silences them, or is ignored | `jecs.meta`, or another signal |
+| Only `OnChange` installed | First `set` is missed | Both `OnAdd` and `OnChange` |
+| Structural change in `OnRemove` | Undefined behaviour | Queue on `world.deferred` (**fork**); upstream: do it after the operation |
+| A hook that raises | Operation aborts: value already stored, or entity left alive | Keep hooks trivial |
+| `OnChange` as "value differs" | Fires on equal values; never for in-place table mutation | [change tracking](best-practices-change-tracking.md) |

@@ -1,26 +1,25 @@
 # Advanced API
 
-## bulk_insert and bulk_remove
+## bulk_insert / bulk_remove
 
 ```luau
--- data components first, with their values in the same order; tags last
+-- data first, values in the same order; tags last
 jecs.bulk_insert(world, world:entity(), { Speed, Armor, Stunned }, { 16, 5 })
 jecs.bulk_remove(world, entity, { Speed, Armor })
 ```
 
-`jecs.bulk_insert(world, entity, ids, values)` adds several ids in one archetype move, with `values[i]` going to `ids[i]`. `jecs.bulk_remove(world, entity, ids)` removes several.
+Use only to spawn a fresh entity with about 8+ plain components and tags, when measured. Slower than `set` at 3 components, equal at 6, 1.57x faster at 12.
 
-- **Use it only to spawn a fresh entity with about eight or more plain components and tags, where a measurement shows the gain.** It is slower than `set` per component at three components, equal at six and 1.57 times faster at twelve.
-- It runs hooks, but skips the `Exclusive` trait: an entity given a second `ChildOf` pair this way ends up with two parents. Use `world:add` for pairs of an exclusive relation.
-- It skips every debug-world check.
-- It accepts fewer values than data components without an error, and leaves the rest nil.
+| Mistake | Result | Instead |
+|---|---|---|
+| Pair of an exclusive relation | `Exclusive` skipped: two parents | `world:add` |
+| Relying on debug checks | All skipped | `set` / `add` while developing |
+| Fewer values than data components | Silent; the rest are nil | Match the arrays |
 
 ## More than 256 data components
 
-`world:component()` and `jecs.component()` share 256 ids and raise past them. An entity given the `jecs.Component` trait holds data like a component:
-
 ```luau
-local Dynamic = world:entity()
+local Dynamic = world:entity() :: jecs.Entity<number>
 world:add(Dynamic, jecs.Component)
 world:set(entity, Dynamic, 42)
 ```
@@ -29,25 +28,24 @@ world:set(entity, Dynamic, 42)
 
 | Call | Returns |
 |---|---|
-| `jecs.is_tag(world, id)` | Whether the id, or pair, holds no data. |
-| `jecs.ECS_ID(e)` | The slot index of a handle. |
-| `jecs.ECS_GENERATION(e)` | The generation of a handle. |
-| `jecs.IS_PAIR(id)` | Whether the id is a pair. |
-| `jecs.pair_first(world, id)`, `jecs.pair_second(world, id)` | The live relation and target of a pair id. |
+| `jecs.is_tag(world, id)` | Id or pair holds no data |
+| `jecs.ECS_ID(e)` / `jecs.ECS_GENERATION(e)` | Slot / generation |
+| `jecs.IS_PAIR(id)` | Is a pair |
+| `jecs.pair_first(world, id)` / `jecs.pair_second(world, id)` | Live relation / target |
 
 ## Debug world
 
-`jecs.world(true)` raises where a normal world stays silent. In both libraries it raises on:
+`jecs.world(true)` raises on:
 
-- `set`, `add` and `remove` on a dead entity;
-- adding a dead entity as an id;
-- removing a wildcard pair;
-- a structural change inside `OnRemove` during a cascaded delete.
+- `set`, `add`, `remove` on a dead entity
+- adding a dead entity as an id
+- removing a wildcard pair
+- a structural change in `OnRemove` during a cascaded delete
 
-On the **fork** it also raises on a hook or trait configured after the id's first use, a raw hook set over signal listeners, a structural change inside `OnRemove` during a direct `world:delete`, and any `add`, `set` or `remove` after a late `jecs.component()` or `jecs.tag()`.
+**fork** adds: hook or trait set after first use; raw hook over signal listeners; structural change in `OnRemove` during a direct `delete`; `delete` of a dead handle; any `add`/`set`/`remove` after a late `jecs.component()` / `jecs.tag()`.
 
-It does not check `bulk_insert`, and it does not catch a pair built from a stale handle.
+Not checked: `bulk_insert`; a pair built from a stale handle whose slot was reused.
 
 ## world:cleanup
 
-`world:cleanup()` removes empty archetypes. Cached queries stay correct across it.
+Removes empty archetypes. Cached queries stay correct.

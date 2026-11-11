@@ -351,6 +351,16 @@ do
 		w:add(holder, pair(R, stale))
 	end)
 	check("a pair built from a stale handle links to the slot's new occupant, even in a debug world", ok and w:target(holder, R) == newcomer)
+
+	for _, debug in { false, true } do
+		local w2 = jecs.world(debug)
+		local R2 = w2:entity()
+		local h2, dead = w2:entity(), w2:entity()
+		w2:delete(dead)
+		check(`a pair built from a dead handle raises while its slot is free (debug world: {debug})`, raises(function()
+			w2:add(h2, pair(R2, dead))
+		end))
+	end
 end
 do
 	local w = jecs.world()
@@ -641,6 +651,19 @@ do
 		check("fork: it stops matching once another entity reuses the target's slot", jecs.ECS_ID(newcomer) == jecs.ECS_ID(alice) and fired == 1)
 	else
 		check("upstream: an added signal on a pair id never fires", ok and fired == 0)
+		local removedFresh = 0
+		w:removed(pair(Likes, bob), function()
+			removedFresh += 1
+		end)
+		local carol = w:entity()
+		local removedLate = 0
+		w:removed(pair(Likes, carol), function()
+			removedLate += 1
+		end)
+		w:add(e, pair(Likes, carol))
+		w:remove(e, pair(Likes, carol))
+		w:remove(e, pair(Likes, bob))
+		check("upstream: a removed signal on a pair id fires only if the pair existed when it was connected", removedFresh == 1 and removedLate == 0)
 	end
 end
 

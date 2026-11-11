@@ -1,31 +1,39 @@
 # Archetypes and measured costs
 
-## The model
+## Mental model
 
-An **archetype** is the set of entities that have exactly the same ids. Each archetype stores one column per data component, and a query walks the archetypes that match it and reads their columns. That is why iteration is fast.
+A columnar database:
 
-Giving an entity a new id, or taking one away, moves it to another archetype and copies every one of its values. This is a **structural change**: `add`, `remove`, `delete`, `clear`, or `set` of a component the entity does not have yet. Its cost grows with the number of components on the entity. Writing a new value into a component the entity already has copies nothing.
+| Database | JECS |
+|---|---|
+| Table | Archetype: entities with exactly the same ids |
+| Column | Data component |
+| Row | Entity |
+| Query | A scan over the matching tables |
 
-Two consequences drive the design advice in the other best-practices files:
-
-- **Prefer changing a value over changing an entity's shape.**
-- **Every distinct pair is its own id**, so every distinct target of a relation creates new archetypes. This is fragmentation: it speeds up "everything that points at T" and slows down building, retargeting and deleting when targets are many.
-
-Archetypes are created on demand and stay when they empty out. Deleting a pair target destroys the archetypes that held its pairs, and `world:cleanup()` removes the other empty ones.
+- Queries are fast because they read whole columns of matching archetypes.
+- **Structural change** (`add`, `remove`, `delete`, `clear`, `set` of a missing component) moves the entity to another archetype and copies every value. Cost grows with component count.
+- `set` of an existing component copies nothing.
+- Every distinct pair is its own id, so each target of a relation creates archetypes (fragmentation). That is what makes "everything pointing at T" a direct lookup.
+- Archetypes stay when emptied. Deleting a pair target destroys the archetypes that held its pairs; `world:cleanup()` removes the other empty ones.
 
 ## Measured costs
 
-Ratios from benchmarks in lune and in Roblox Studio with JECS compiled native. Where two figures are given they are the two environments. Treat them as the size of an effect, and measure before optimising.
+Ratios from lune and from Roblox Studio (JECS native). Two figures = the two environments. Measure before optimising.
 
 | Choice | Cost |
 |---|---|
-| **Observing a `set`**, against no listener | one hook 1.3 to 1.7 times; one signal listener 1.8 to 2.1; three signal listeners 2.5 to 2.6 |
-| **Debug world**, `world:set` | about 3.7 times a normal world |
-| **Changing state**, against `set` of a value component | exclusive pair 4 to 5 times on an entity with 2 other components, 11 to 13 with 10, 28 to 38 with 30. Removing one tag and adding another: 8 to 10, 20 to 22, 46 to 50 |
-| **Selecting one state** among 10,000 entities, against a query filtered by a tag or exclusive pair | value component with an `if` in the loop: 4 times when a quarter match, about 100 times when 1% match |
-| **Despawning**, against collect-then-delete | marker tag plus a cleanup query 1.2 to 1.4 times; deleting inside the loop is no faster |
-| **Deferred queue** (fork, lune only), against a hand-written collect-then-apply | 1.0 to 1.5 times; about 45 ns to queue a change |
-| **Pair against component for a link**, 10,000 holders | building the world: equal at 10 targets, 3 times slower at 1,000, 10 to 19 at 10,000. Reading the target: `world:target` 2 to 5 times `world:get`. Retargeting: exclusive pair about 4 times a `set` at 10 targets, 14 to 22 at 10,000. Reverse lookup: the pair query is 9 times faster than scanning at 10 targets and about 200 times at 1,000. Deleting all targets: 2 to 3 times dearer going from 10 to 1,000 targets, then 15 to 30 times dearer again at 10,000 |
-| **Events**, 10,000 a frame, against applying the change directly | pending component consumed and removed by a system 4.4 to 6 times; an entity per event 6.4 to 9 |
-| **Pair signals** (fork, lune only) | each pair listener on a relation adds 12 to 20 ns to every event on it: about half as much again as an unobserved add with 10, four times with 100 |
-| **`bulk_insert`**, against `set` per component (lune only) | slower at 3 components, equal at 6, 1.57 times faster at 12 |
+| Observing a `set`, vs none | hook 1.3-1.7x; 1 signal listener 1.8-2.1x; 3 listeners 2.5-2.6x |
+| Debug world `set` | about 3.7x |
+| Switching state, vs `set` of a value | exclusive pair 4-5x (entity with 2 other components), 11-13x (10), 28-38x (30). Remove tag + add tag: 8-10x, 20-22x, 46-50x |
+| Selecting one state among 10,000, vs a tag or pair filter | value + `if`: 4x when 25% match, about 100x when 1% match |
+| Despawn, vs collect-then-delete | marker tag + cleanup query 1.2-1.4x; in-loop delete no faster |
+| Deferred queue (fork, lune), vs hand-written collect-then-apply | 1.0-1.5x; about 45 ns per queued change |
+| Pair vs component link, 10,000 holders: build | equal at 10 targets; 3x at 1,000; 10-19x at 10,000 |
+| ... read target | `world:target` 2-5x `world:get` |
+| ... retarget | exclusive pair about 4x a `set` at 10 targets; 14-22x at 10,000 |
+| ... reverse lookup | pair query 9x faster than a scan at 10 targets; about 200x at 1,000 |
+| ... delete all targets | 2-3x dearer from 10 to 1,000 targets; 15-30x again at 10,000 |
+| Events, 10,000/frame, vs direct change | pending component 4.4-6x; entity per event 6.4-9x |
+| Pair signals (fork, lune) | 12-20 ns per pair listener per event on the relation |
+| `bulk_insert` vs `set` per component (lune) | slower at 3, equal at 6, 1.57x faster at 12 |

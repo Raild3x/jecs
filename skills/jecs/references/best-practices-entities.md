@@ -1,31 +1,35 @@
-# Entity design and links
+# Entity design
 
 ## What is an entity
 
-- **An entity is anything with its own changing state** that systems process: a character, a projectile, a status effect that lasts.
-- **Something that lasts one frame is an event**, kept in an array: see [best-practices-systems.md](best-practices-systems.md).
-- **Shared, unchanging data is one table**, referenced from a component, with no entity per copy.
+| Thing | Entity? |
+|---|---|
+| Has its own state that changes and systems process (character, projectile, lasting effect) | Yes |
+| Created only when something first needs per-instance state | Yes, lazily: no entity until then |
+| Static scenery, pooled visual effects, UI elements | No: plain instances or tables |
+| Lasts one frame | No: an event record ([best-practices-systems](best-practices-systems.md)) |
+| Shared, unchanging definition (item stats) | No: one table, referenced from a component |
 
-## Handles
-
-Store an entity handle freely. A deleted entity's handle stays unequal to its slot's next occupant.
-
-- **Reading through a stored handle needs no check:** `world:get` and `world:has` return nil and false for a dead entity.
-- **Check `world:contains` before writing to it or building a pair from it.** A normal world ignores a write to a dead entity without an error, and a pair keeps no generation, so a stale handle links to the slot's new occupant.
+Many instances of one kind: one shared table for the type, one entity per instance holding only what differs.
 
 ## Links between entities
 
-| The link | Model | Why |
-|---|---|---|
-| The holder belongs to the target: an item to its owner, a part to its vehicle | A pair on the many side pointing at the few, with a cleanup trait: `pair(OwnedBy, owner)` | The pair gives the reverse lookup `world:query(pair(OwnedBy, owner))` and deletes the holders with the target. |
-| The holder merely points at the target: an aim target, a last attacker | The entity stored in a component: `world:set(npc, Target, enemy)` | Retargeting is a plain `set`, and no archetype is created per target. |
-| One entity pointing at many | A pair or component on each of the many, pointing back | Pairs on the one side put every target's id in that one entity's archetype. |
+| Link | Model |
+|---|---|
+| Belongs to / is part of / is in | Pair with a cleanup trait. Gives reverse lookup and cascade |
+| Parent and child | `pair(jecs.ChildOf, parent)` |
+| Whole needs fast access to named parts | `ChildOf` for lifetime + a component holding the part handles |
+| Target rewritten on most entities every frame, or about 10,000 distinct targets | Entity in a component. Retargeting a pair costs 4-22x a `set`; building and deleting climb steeply at that scale |
 
-"Few" means the number of targets times the number of different holder shapes stays in the hundreds. Past that, store the owner in a component and keep the reverse table and the delete cascade by hand.
+Patterns for each: [feature-pairs](feature-pairs.md).
 
-## A target that may die
+## Handles
 
-A component does not clear itself when its target dies, so the reader treats a dead target as none:
+- Storing a handle is fine. A dead handle never equals its slot's next occupant.
+- Reads are safe on a dead handle (`get` nil, `has` false).
+- `world:contains` before a write or `pair()`.
+
+Entity in a component: nothing clears it when the target dies. The reader drops it.
 
 ```luau
 local targeting = world:query(Target):cached()
@@ -33,7 +37,7 @@ local targeting = world:query(Target):cached()
 local function dropDeadTargets()
 	local stale: { jecs.Entity } = {}
 	for entity, target in targeting do
-		if not world:contains(target) or world:has(target, Dead) then
+		if not world:contains(target) then
 			table.insert(stale, entity)
 		end
 	end
@@ -43,20 +47,10 @@ local function dropDeadTargets()
 end
 ```
 
-## Who points at me
+## Mistakes
 
-Over many changing targets, build a table from the forward component, on first use in a frame, inside the system that needs it, and drop it at frame end:
-
-```luau
-local hunters: { [jecs.Entity]: { jecs.Entity } } = {}
-for entity, target in targeting do
-	local list = hunters[target]
-	if not list then
-		list = {}
-		hunters[target] = list
-	end
-	table.insert(list, entity)
-end
-```
-
-*Why:* pairs would create an archetype per target, and a scan per lookup reads every holder each time.
+| Mistake | Result | Instead |
+|---|---|---|
+| An entity for everything | Bookkeeping with no system that reads it | Entities only for processed state |
+| A hand-kept table of "who points at X" | Duplicates what a pair query gives; goes stale | `world:query(pair(R, X))` |
+| A stored handle used without a check in a write | Silently ignored on a normal world | `world:contains` |

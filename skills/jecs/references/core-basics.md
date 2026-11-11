@@ -1,67 +1,73 @@
 # Core basics
 
-Worlds, ids, entities and components, and how the fork differs from upstream. Behaviour is that of `ukendio/jecs` 0.11.0 and `raild3x/jecs` 0.11.0-fork.1 unless a line says **fork** or **upstream**. Every behaviour in the reference files is asserted in [`../verify/facts.luau`](../verify/facts.luau) or [`../verify/examples.luau`](../verify/examples.luau).
+Applies to `ukendio/jecs` 0.11.0 and `raild3x/jecs` 0.11.0-fork.1 unless marked. Every statement in these files is asserted in [`../verify/`](../verify/).
 
-## Fork and upstream
+## Fork vs upstream
 
 | Behaviour | `raild3x/jecs` | `ukendio/jecs` |
 |---|---|---|
-| `world.deferred`, `jecs.deferred(world)` | present | absent: collect into a table and apply after the loop |
-| `world:added/changed/removed(pair(R, target), fn)` | fires for that pair only | returns a disconnect function and never fires for `added` |
-| `query:with(A):with(B)`, `query:without(A):without(B)` | both apply | only the last call applies |
-| `jecs.component()` or `jecs.tag()` after a world exists | that world's `world:component()` raises; a debug world also raises from `add`, `set`, `remove` | silent: the id returned is one the world already handed out |
-| Hook or trait configured after the id's first use | debug world raises; normal world ignores it | ignored in both worlds |
-| Raw hook set on an id that has signal listeners | debug world raises | silent |
-| Structural change in `OnRemove` during `world:delete` | debug world raises | debug world raises only for cascaded deletes |
-| `world:delete` of a dead handle in a debug world | raises | ignored |
-| Entity generation | 24 bits | 16 bits |
+| `world.deferred`, `jecs.deferred(world)` | present | absent |
+| Signal on `pair(R, target)` | fires for that pair | `added` never fires; `changed`/`removed` only if the pair existed when connected |
+| Listener disconnecting during dispatch | others still run | another listener can miss the event |
+| Chained `:with(A):with(B)`, `:without(A):without(B)` | both apply | last call only |
+| `jecs.component()` / `jecs.tag()` after a world exists | `world:component()` raises; debug world raises on `add`/`set`/`remove` | silent id collision |
+| Hook or trait set after first use | debug world raises | ignored |
+| Raw hook over signal listeners | debug world raises | silent |
+| Structural change in `OnRemove` during `delete` | debug world raises | raises only on cascades |
+| `delete` of a dead handle, debug world | raises | ignored |
+| Generation | 24 bits | 16 bits |
 
-## World and ids
+## Setup
 
 ```luau
 --!strict
 local jecs = require(path.to.jecs)
 local pair = jecs.pair
 
--- before the world: ids shared by every world
-local Health = jecs.component<<number>>()   -- data component
+local Health = jecs.component<<number>>()   -- data
 local Dead = jecs.tag()                     -- tag
-jecs.meta(Health, jecs.Name, "Health")      -- set a value on the id
-jecs.meta(Dead, jecs.Exclusive)             -- add a trait to the id
+jecs.meta(Health, jecs.Name, "Health")      -- value on the id
+jecs.meta(Dead, jecs.Exclusive)             -- trait on the id
 
-local world = jecs.world()                  -- jecs.world(true) is the debug world
-
--- after the world: ids of that world only
-local Speed = world:component<<number>>()   -- data component, one of 256
-local Marker = world:entity()               -- an entity; used as an id it is a tag
+local world = jecs.world(RunService:IsStudio()) -- true = debug world
 ```
 
-- `jecs.meta(id, key, value?)` records `world:set(id, key, value)`, or `world:add(id, key)` when there is no value, and every world created afterwards applies it. A world that already exists never sees it.
-- `world:component()` is always a data component and raises after 256 component ids. For more, see [advanced-api.md](advanced-api.md).
-- A tag is `jecs.tag()` or `world:entity()`. `jecs.is_tag(world, id)` tells the two kinds apart.
-- A debug world, `jecs.world(true)`, raises where a normal world stays silent. Use it in development, for example `jecs.world(RunService:IsStudio())`: it makes `world:set` about 3.7 times slower.
+- Ids, then `jecs.meta`, then the world. `meta` only reaches worlds created after it.
+- After the world exists, make ids with `world:component<<T>>()` (data) and `world:entity()` (tag).
+- `jecs.is_tag(world, id)` tells data from tag.
 
-## Entities and components
+## API
 
 | Call | Does |
 |---|---|
-| `world:entity()` | New entity with no components. |
-| `world:set(e, id, value)` | Stores the value. Adds the component when missing (structural), else overwrites (not structural). Raises when `id` is a tag. |
-| `world:add(e, id)` | Adds a tag or a pair without a value. Does nothing when already present. On a data component it leaves the value nil. |
-| `world:get(e, a, b?, c?, d?)` | Values of up to four ids. Nil for a missing component, a tag and a dead entity. A fifth id raises. |
-| `world:has(e, a, b?, c?, d?)` | True when the entity has all of up to four ids. With a fifth id it raises when the first four are present, and returns false otherwise: call it twice for more. Accepts `pair(R, jecs.Wildcard)` and `pair(jecs.Wildcard, T)`. |
-| `world:remove(e, id)` | Removes one id. |
-| `world:clear(e)` | Removes every component from `e`. `e` stays alive, and stays on the entities that have `e` as a tag or target. |
-| `world:delete(e)` | Deletes `e`, removes it wherever it is used as a tag or target, and applies cleanup traits. A dead handle is ignored, except that the **fork**'s debug world raises on it. |
-| `world:contains(e)` | True only for a live handle. |
-| `world:exists(e)` | True when the slot is in use by any generation. Use `contains` to validate a handle. |
+| `world:entity()` | New empty entity |
+| `world:set(e, id, value)` | Stores the value. Structural if the component is missing |
+| `world:add(e, id)` | Adds a tag or pair. No-op if present |
+| `world:get(e, a, b?, c?, d?)` | Up to 4 values. Nil if missing, a tag, or `e` is dead |
+| `world:has(e, a, b?, c?, d?)` | Up to 4 ids, all required. Accepts wildcard pairs |
+| `world:remove(e, id)` | Removes one id |
+| `world:clear(e)` | Removes all of `e`'s components. `e` lives on, still usable as a tag or target |
+| `world:delete(e)` | Deletes `e`, removes it as tag/target elsewhere, runs cleanup traits |
+| `world:contains(e)` | True only for a live handle |
 
-A singleton is a component set on its own id: `world:set(Time, Time, 12.5)`, `world:get(Time, Time)`.
+Singleton: `world:set(Time, Time, 12.5)`, `world:get(Time, Time)`.
 
 ## Handles
 
-An entity handle packs a slot index and a generation: `jecs.ECS_ID(e)`, `jecs.ECS_GENERATION(e)`. Deleting an entity frees its slot, and the next `world:entity()` reuses the most recently freed slot with the generation raised by one. The old handle stays unequal to the new one until the generation wraps: after 16,777,216 reuses of one slot on the fork, 65,536 on upstream.
+- A handle is slot + generation: `jecs.ECS_ID(e)`, `jecs.ECS_GENERATION(e)`.
+- The newest freed slot is reused first, generation + 1. The old handle stays unequal until the generation wraps (16,777,216 reuses, **fork**; 65,536 upstream).
+- Reads through a dead handle are safe: `get` nil, `has` false.
+- Check `world:contains` before a write or `pair()`. A pair from a dead handle raises while the slot is free, and silently links to the new occupant once it is reused.
 
-A normal world ignores `set`, `add`, `remove` and `delete` on a dead entity. A debug world raises on them. `get` and `has` on a dead entity return nil and false in both, so a read needs no check; check `world:contains` before a write and before building a pair.
+## Mistakes
 
-Create entities with `world:entity()` and no argument. `world:entity(id)` can corrupt the entity index: claiming the next generation of a live entity kills it and hands its components to the new id. `world:range(a, b)` hands out the ids from `a + 1` to `b - 1` and then raises.
+| Mistake | Result | Instead |
+|---|---|---|
+| `world:component()` as a marker | A column and one of 256 ids ("Too many components" past them) | `jecs.tag()` |
+| `world:set` with a value on a tag | Raises | `world:add` |
+| `world:add` of a data component | `has` true, `get` nil | `world:set` |
+| Fifth id to `get` / `has` | On a live entity `get` raises "args exceeded"; `has` raises only if the first four are present, else false | Two calls |
+| `world:exists` to validate | True for a dead handle | `world:contains` |
+| Write to a dead handle | Ignored (normal world), raises (debug) | `world:contains` first |
+| `world:entity(id)` | Can kill a live entity and give its components to the new id | `world:entity()` |
+| `world:range(a, b)` | Hands out ids above `a` (and above the current highest id) up to `b - 1`, then raises | Avoid |

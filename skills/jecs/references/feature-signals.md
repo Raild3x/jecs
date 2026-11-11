@@ -1,41 +1,61 @@
 # Signals
 
-A signal is any number of listeners on an id, connected and disconnected at any time, including after the id is in use.
+Any number of listeners on an id, connected and disconnected at any time.
+
+## When to use
+
+| Use | For |
+|---|---|
+| Hook (`jecs.meta`) | The component's own invariant |
+| Signal | Outside observers: debug, UI, change tracking, runtime toggles |
+| System | Gameplay logic |
+
+## API
 
 ```luau
 local disconnect = world:added(Health, function(entity, id, value) end)
 world:changed(Health, function(entity, id, value) end)
 world:removed(Health, function(entity, id, deleted) end)
-
-disconnect() -- raises when called twice
+disconnect()
 ```
 
-Listeners receive the same arguments, at the same moments, as the matching hook: see the table in [feature-hooks.md](feature-hooks.md). A hook installed through `jecs.meta` and signals connected later all run.
+- Same arguments and timing as the matching hook: [feature-hooks](feature-hooks.md).
+- Works on an id already in use. Runs after the hook.
+- A signal on a relation runs for its pairs; `id` is the pair id.
+- One listener makes `set` about 2x; three, 2.5x. The dispatcher stays installed after the last disconnect.
 
-## Hooks or signals
-
-| Use | For |
-|---|---|
-| A hook, through `jecs.meta` | The component's own invariant, known when the component is defined. One per kind. |
-| A signal | An outside observer: debugging, UI, change tracking, anything switched on and off at runtime. |
-| A system | Gameplay logic. |
-
-## Rules
-
-- **A remove listener only reads and releases**, like a remove hook. Queue structural changes on `world.deferred` (**fork**).
-- **Keep listeners too simple to raise.** A listener that raises aborts the operation half way and stops the listeners after it.
-- **Each listener costs every `set`.** One listener makes `set` about twice as dear, three make it 2.5 times. Once a signal has been used on an id, a dispatcher stays installed there.
-
-## A signal on one pair (fork)
+### Pair signals (fork)
 
 ```luau
 local disconnect = world:added(pair(Follows, leader), function(entity, id) end)
 ```
 
-- `world:added`, `world:changed` and `world:removed` accept `pair(R, target)` and then run for that pair only.
-- The listener stops matching once `target` is deleted, even after another entity reuses its slot. It still runs for the removal that deleting `target` causes.
-- `pair(R, jecs.Wildcard)` is the same as listening to `R`. `pair(jecs.Wildcard, target)` raises, as does a pair whose relation or target is dead.
-- **Disconnect it when its target dies, and keep them to a handful per relation.** It is registered on `R`, so every event on `R` runs every pair listener's filter: 12 to 20 ns each, which makes an add four times as dear with 100 of them.
-- **For many targets connect one listener to `R` and look the pair id up in a table.**
+- Runs for that pair only. Stops matching once the target is deleted, even after its slot is reused.
+- `pair(R, jecs.Wildcard)` equals `R`. `pair(jecs.Wildcard, t)` raises. A dead relation or target raises while its slot is free; once reused, the listener binds to the new occupant.
+- Registered on `R`: every event on `R` costs 12-20 ns per pair listener (an add is 4x with 100).
+- Upstream: `added` never fires, and `changed`/`removed` only if the pair existed when connected. Listen to `R` and compare the id.
 
-On upstream a listener given a pair id never runs for `added`: listen to the relation and compare the id.
+## Patterns
+
+Many targets: one listener on the relation and a table.
+
+```luau
+local handlers: { [jecs.Id]: (jecs.Entity) -> () } = {}
+world:added(Follows, function(entity, id)
+	local handler = handlers[id]
+	if handler then
+		handler(entity)
+	end
+end)
+```
+
+## Mistakes
+
+| Mistake | Result | Instead |
+|---|---|---|
+| Structural change in a `removed` listener | Undefined behaviour | Queue on `world.deferred` (**fork**) |
+| A listener disconnecting itself during dispatch (upstream) | Another listener misses that event | Disconnect outside the callback |
+| A listener that raises | Aborts the operation and the listeners after it | Keep listeners trivial |
+| Calling `disconnect` twice | Raises "Listener not found" | Clear the variable |
+| Trusting `value` when a hook corrects it | Last call carries the uncorrected value | `world:get` |
+| A pair listener left after its target died (**fork**) | Dead weight on every event of `R` | Disconnect it |

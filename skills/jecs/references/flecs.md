@@ -44,10 +44,10 @@ Each of these is a Flecs feature with no JECS equivalent. When a Flecs pattern d
 | Automatic deferral of changes made while iterating | Nothing is deferred for you. Queue on `world.deferred` (fork) or collect and apply after the loop. |
 | Systems, pipelines and phases | Systems are functions the game calls in a fixed order. A phase is a naming convention for a group of them. |
 | Query traversal (`up`, `cascade`) and query variables | Walk the hierarchy by hand with `world:parent` and `world:children`. Join by running one query and calling `world:get` on the related entity. |
-| `order_by`, `group_by` | Collect the results and sort them. Iteration order is not stable between runs. |
+| `order_by`, `group_by` | Collect the results and sort them. Iteration order follows archetype layout and is not a contract. |
 | Non-fragmenting relationships (`DontFragment`) and sparse components | Every pair fragments. For a link with many targets store the entity in a component. |
 | Observers over several terms, and custom events | Signals watch one id. Send game events through an array that systems read. |
-| `in` / `out` annotations and built-in change detection | `changed` signals, or a dirty tag that a system sets and clears. |
+| `in` / `out` annotations and built-in change detection | A recording `changed` listener, or a comparison against the last value handled. |
 | Entity lookup by name or path | Keep your own table from name to entity. |
 | Modules, the REST API, the explorer, timers, the meta addon | Plain Luau modules. Debugging tools are separate projects. |
 | Bulk and batched creation APIs | `jecs.bulk_insert` for one entity, with the limits in [advanced-api.md](advanced-api.md). |
@@ -57,7 +57,7 @@ Each of these is a Flecs feature with no JECS equivalent. When a Flecs pattern d
 ## Differences that look the same
 
 - **`on_set` against `OnChange`.** Flecs `on_set` runs for the first value too. JECS runs `OnAdd` with the value for the first `set` and `OnChange` only for later ones.
-- **Hooks are frozen at first use.** Flecs lets hooks be registered when the component is registered. JECS reads them when the id is first used, so they must come through `jecs.meta` before the world exists.
+- **Hooks are frozen at first use.** Flecs lets hooks be registered when the component is registered. JECS reads them when the id is first used: set them through `jecs.meta` before the world exists.
 - **Remove order on cascade.** JECS runs the parent's remove callbacks before its children's.
 - **Structural changes in a remove hook.** Flecs defers operations made from observers. In JECS they run at once and are undefined behaviour inside a remove hook: queue them.
 - **A pair forgets generations.** A JECS pair built from a stale handle points at the slot's new occupant.
