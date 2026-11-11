@@ -3210,7 +3210,37 @@ local function world_new(DEBUG: boolean?)
 		& ((e: i53, id: i53, value: T, oldarchetype: archetype) -> ())
 		& ((e: i53, id: i53, delete: boolean?) -> ())
 
+	-- A signal on a pair id listens to the relation and filters for that pair.
+	-- Returns the id to register on and the listener to register.
+	local function pair_listener(signal: string, component: i53, fn: any): (i53, any)
+		if not ECS_IS_PAIR(component) then
+			return component, fn
+		end
+		if ECS_PAIR_FIRST(component) == EcsWildcard then
+			error(`world:{signal} cannot listen to pair(jecs.Wildcard, target), listen to the relation instead`, 3)
+		end
+		local relation = ecs_pair_first(world, component)
+		if relation == 0 then
+			error(`world:{signal} was given a pair whose relation is not alive`, 3)
+		end
+		if ECS_PAIR_SECOND(component) == EcsWildcard then
+			return relation, fn
+		end
+		local target = ecs_pair_second(world, component)
+		if target == 0 then
+			error(`world:{signal} was given a pair whose target is not alive`, 3)
+		end
+		-- A pair id holds no generation, so the target is captured here and the
+		-- listener stops matching once another entity occupies its slot.
+		return relation, function(entity, id, a, b)
+			if id == component and entity_index_try_get_unsafe(target) then
+				fn(entity, id, a, b)
+			end
+		end
+	end
+
 	world.added = function<T>(_: world, component: i53, fn: Listener<T>)
+		component, fn = pair_listener("added", component, fn)
 		local listeners = signals.added[component]
 		if not listeners then
 			listeners = {}
@@ -3260,6 +3290,7 @@ local function world_new(DEBUG: boolean?)
 		component: i53,
 		fn: Listener<T>
 	)
+		component, fn = pair_listener("changed", component, fn)
 		local listeners = signals.changed[component]
 		if not listeners then
 			listeners = {}
@@ -3306,6 +3337,7 @@ local function world_new(DEBUG: boolean?)
 	end
 
 	world.removed = function<T>(_: world, component: i53, fn: (i53, i53, boolean?) -> ())
+		component, fn = pair_listener("removed", component, fn)
 		local listeners = signals.removed[component]
 		if not listeners then
 			listeners = {}

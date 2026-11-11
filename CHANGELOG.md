@@ -4,6 +4,7 @@
 
 ### Added
 - Added signals that allow listening to relation part of pairs in signals.
+- `world:added`, `world:changed` and `world:removed` now accept a pair id. `pair(R, target)` invokes the listener only for that pair, and stops matching once `target` is deleted, even after another entity reuses its slot. `pair(R, jecs.Wildcard)` is the same as listening to `R`. `pair(jecs.Wildcard, target)` and a pair whose relation or target is not alive raise an error. Previously a listener on a pair id returned a disconnect function and never fired for `added`. The listener is registered on the relation, so every event on `R` checks every pair listener of `R`: keep them to a handful per relation, and disconnect one when its target dies.
 
 ### Changed
 - The entity generation is now 24 bits wide instead of 16, so a recycled slot reissues an old handle value after 16,777,216 deletes instead of 65,536. Entity ids stay below 2^48, where pair ids begin.

@@ -2331,6 +2331,155 @@ TEST("disconnecting signal listeners", function()
 	end
 end)
 
+TEST("signals on a pair id", function()
+	do CASE "should invoke a pair listener only for that pair"
+		local world = jecs.world()
+		local Likes = world:entity()
+		local alice, bob, e = world:entity(), world:entity(), world:entity()
+
+		local added, removed, relation = 0, 0, 0
+		world:added(pair(Likes, alice), function(entity, id)
+			CHECK(entity == e)
+			CHECK(id == pair(Likes, alice))
+			added += 1
+		end)
+		world:removed(pair(Likes, alice), function(entity, id)
+			CHECK(id == pair(Likes, alice))
+			removed += 1
+		end)
+		world:added(pair(Likes, jecs.Wildcard), function()
+			relation += 1
+		end)
+
+		world:add(e, pair(Likes, bob))
+		world:add(e, pair(Likes, alice))
+		world:remove(e, pair(Likes, bob))
+		world:remove(e, pair(Likes, alice))
+
+		CHECK(added == 1)
+		CHECK(removed == 1)
+		CHECK(relation == 2)
+	end
+
+	do CASE "should pass the value of a pair that holds data to added and changed"
+		local world = jecs.world()
+		local Owns = world:component() :: Id<number>
+		local car, bike, e = world:entity(), world:entity(), world:entity()
+
+		local added, changed = 0, 0
+		world:added(pair(Owns, car), function(_, _, value)
+			added += value
+		end)
+		world:changed(pair(Owns, car), function(_, _, value)
+			changed += value
+		end)
+
+		world:set(e, pair(Owns, bike), 100)
+		world:set(e, pair(Owns, bike), 100)
+		world:set(e, pair(Owns, car), 1)
+		world:set(e, pair(Owns, car), 5)
+
+		CHECK(added == 1)
+		CHECK(changed == 5)
+	end
+
+	do CASE "should stop invoking a pair listener once it is disconnected"
+		local world = jecs.world()
+		local Likes = world:entity()
+		local alice, e = world:entity(), world:entity()
+
+		local count = 0
+		local disconnect = world:added(pair(Likes, alice), function()
+			count += 1
+		end)
+		world:add(e, pair(Likes, alice))
+		world:remove(e, pair(Likes, alice))
+		disconnect()
+		world:add(e, pair(Likes, alice))
+
+		CHECK(count == 1)
+	end
+
+	do CASE "should invoke removed and added once each when an exclusive pair is replaced"
+		local world = jecs.world()
+		local Rel = world:entity()
+		world:add(Rel, jecs.Exclusive)
+		local x, y, e = world:entity(), world:entity(), world:entity()
+
+		local removed_x, added_y = 0, 0
+		world:removed(pair(Rel, x), function()
+			removed_x += 1
+		end)
+		world:added(pair(Rel, y), function()
+			added_y += 1
+		end)
+
+		world:add(e, pair(Rel, x))
+		world:add(e, pair(Rel, y))
+
+		CHECK(removed_x == 1)
+		CHECK(added_y == 1)
+	end
+
+	do CASE "should invoke the removed listener of a pair when its target is deleted"
+		local world = jecs.world()
+		local Likes = world:entity()
+		local alice, e = world:entity(), world:entity()
+
+		local removed = 0
+		world:removed(pair(Likes, alice), function(entity)
+			CHECK(entity == e)
+			removed += 1
+		end)
+		world:add(e, pair(Likes, alice))
+		world:delete(alice)
+
+		CHECK(removed == 1)
+		CHECK(world:contains(e))
+	end
+
+	do CASE "should not invoke a pair listener for another entity that reuses the slot of its deleted target"
+		local world = jecs.world()
+		local Likes = world:entity()
+		local alice, e = world:entity(), world:entity()
+
+		local added, removed = 0, 0
+		world:added(pair(Likes, alice), function()
+			added += 1
+		end)
+		world:removed(pair(Likes, alice), function()
+			removed += 1
+		end)
+
+		world:delete(alice)
+		local newcomer = world:entity()
+		CHECK(ECS_ID(newcomer) == ECS_ID(alice))
+		-- A pair holds no generation, so this is the id the listeners were given
+		CHECK(pair(Likes, newcomer) == pair(Likes, alice))
+
+		world:add(e, pair(Likes, newcomer))
+		world:remove(e, pair(Likes, newcomer))
+
+		CHECK(added == 0)
+		CHECK(removed == 0)
+	end
+
+	do CASE "should error for pair(Wildcard, target) and for a pair whose relation or target is not alive"
+		local world = jecs.world()
+		local Likes = world:entity()
+		local alice, dead = world:entity(), world:entity()
+		world:delete(dead)
+
+		for _, signal in { "added", "changed", "removed" } do
+			local connect = (world :: any)[signal]
+			CHECK(not pcall(connect, world, pair(jecs.Wildcard, alice), function() end))
+			CHECK(not pcall(connect, world, pair(Likes, dead), function() end))
+			CHECK(not pcall(connect, world, pair(dead, alice), function() end))
+			CHECK(not pcall(connect, world, pair(dead, jecs.Wildcard), function() end))
+		end
+	end
+end)
+
 -- FOCUS()
 TEST("world:range()", function()
 

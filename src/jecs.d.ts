@@ -287,9 +287,15 @@ export class World {
 	 */
 	query<T extends Id[]>(...components: T): Query<T>;
 
-	added<T>(component: Entity<T>, listener: (e: Entity, id: Id<T>, value: T) => void): () => void;
-	changed<T>(component: Entity<T>, listener: (e: Entity, id: Id<T>, value: T) => void): () => void;
-	removed<T>(component: Entity<T>, listener: (e: Entity, id: Id<T>, deleted?: true) => void): () => void;
+	/**
+	 * Signals. `component` may be a pair: `pair(R, target)` listens to that pair only, and
+	 * `pair(R, Wildcard)` is the same as listening to `R`. A pair listener is registered on
+	 * the relation, so every event on `R` checks every pair listener of `R`.
+	 * @returns A function that disconnects the listener.
+	 */
+	added<T>(component: Id<T>, listener: (e: Entity, id: Id<T>, value: T) => void): () => void;
+	changed<T>(component: Id<T>, listener: (e: Entity, id: Id<T>, value: T) => void): () => void;
+	removed<T>(component: Id<T>, listener: (e: Entity, id: Id<T>, deleted?: true) => void): () => void;
 }
 
 export function world(DEBUG?: boolean): World;
