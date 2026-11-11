@@ -2634,7 +2634,7 @@ local function ecs_bulk_insert(world: world, entity: i53, ids: { i53 }, values: 
 
 		for i, id in ids do
 			local value = values[i]
-			if value then
+			if value ~= nil then
 				r.archetype.columns_map[id][r.row] = value
 			end
 		end

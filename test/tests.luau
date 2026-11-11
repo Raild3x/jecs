@@ -617,6 +617,23 @@ TEST("bulk", function()
 		world:set(e, c1, 4)
 		CHECK(seen_c1 == 4)
 	end
+
+	do CASE "#343 false should be set as a value on an entity without components"
+		local world = jecs.world()
+		local c1, c2 = world:component(), world:component()
+
+		local e = world:entity()
+		jecs.bulk_insert(world, e, { c1, c2 }, { false, 1 })
+		CHECK(world:has(e, c1))
+		CHECK(world:get(e, c1) == false)
+		CHECK(world:get(e, c2) == 1)
+
+		-- Same as on an entity that already has components
+		local e2 = world:entity()
+		world:set(e2, c2, 1)
+		jecs.bulk_insert(world, e2, { c1 }, { false })
+		CHECK(world:get(e2, c1) == false)
+	end
 end)
 
 TEST("repro", function()
