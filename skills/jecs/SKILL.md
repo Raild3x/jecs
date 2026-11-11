@@ -89,6 +89,6 @@ Topic mistakes are in each reference file.
 | [advanced-api](references/advanced-api.md) | `bulk_insert`, >256 components, debug world |
 | [flecs](references/flecs.md) | Flecs named: what carries over, what is missing |
 | [upstream-differences](references/upstream-differences.md) | The project uses `ukendio/jecs` |
-| [verify/](verify/) | A rule looks wrong or JECS changed: `lune run run.luau` in that folder |
+| [verify/](verify/) | A rule looks wrong or JECS changed: `lune run run.luau` in that folder. `bench_*.luau` re-measure the cost table; `types.luau` checks the typing claims with `luau-lsp analyze` |
 
 Rewritten from the `jecs` and `ecs-design` skills by christopher-buss.

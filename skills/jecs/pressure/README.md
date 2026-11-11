@@ -29,6 +29,8 @@ After the run, copy the scenario's `check.luau` to the project root and `lune ru
 | `review/` | fork | find the defects in `game.luau`, write `REVIEW.md` | recognising mistakes |
 | `design/` | fork | ten modelling decisions from `BRIEF.md`: write `components.luau` and `DESIGN.md` | choosing pair, component, tag, value, entity, event queue |
 | `inherit/` | fork | six tickets on an existing `game.luau`: targets, zones, a per-frame count, carried items, queued damage with thorns, speed | inferring the model from stated use; stale handles; late traits; event queues |
+| `infer/` | fork | four tickets with no rates: the caller modules show how each function is used | choosing component, value, pair or tag from usage in code; model detected by archetype counts |
+| `rival/` | fork | one link that merely points, is read every frame, and is set once | the case where the pair-first skill and the by-need skill disagree |
 
 Ticket wording for each scenario is in the "Tickets" section at the end.
 
@@ -246,7 +248,45 @@ Second adversarial review, same day: 227,464 tokens, 12 minutes, 40 tool calls. 
 | Major | The upstream emptied-entity row named too narrow a trigger | Corrected |
 | Minor | A debug world left an entity marked as being deleted after its hook raised (fixed in the library); an abandoned delete has already run earlier hooks; retarget cost depends on entity width; the symptom table missed causes; module-scope state against several worlds; and six more | Corrected in place |
 
-Not verified by either reviewer: the typing claim in SKILL.md (no type checker could be run) and the Studio figures.
+Not verified by either reviewer: the typing claim in SKILL.md (checked later, see below) and the Studio figures.
+
+## Results, 2026-11-11: infer and rival, model detected by the checks
+
+Sonnet at medium effort. No grader: `check.luau` reports behaviour and model separately, and the model checks were validated against a reference answer (4 of 4) and a deliberately wrong one (0 of 4).
+
+`infer/`, three runs per arm:
+
+| Arm | Run | Behaviour (11) | Model (4) | Tokens | Time | Tool calls |
+|---|---|---|---|---|---|---|
+| No skill | 1 | 10 | 3 | 58,042 | 40 s | 7 |
+| No skill | 4 | 10 | 3 | 55,415 | 42 s | 8 |
+| No skill | 7 | 11 | 4 | 59,263 | 64 s | 11 |
+| Skill before the rewrite | 2 | 11 | 4 | 57,271 | 27 s | 7 |
+| Skill before the rewrite | 5 | 11 | 4 | 57,237 | 25 s | 7 |
+| Skill before the rewrite | 8 | 11 | 4 | 58,209 | 25 s | 7 |
+| Current skill | 3 | 11 | 4 | 63,691 | 35 s | 16 |
+| Current skill | 6 | 11 | 4 | 65,113 | 38 s | 16 |
+| Current skill | 9 | 11 | 4 | 56,355 | 25 s | 7 |
+
+- Without a skill, two of three runs made focus a pair: about 1,000 archetypes for 1,000 NPCs, and `setFocus` with a dead handle linked the NPC to whatever reused the slot. This is the first scenario in which the skill changes the model an agent chooses.
+- Both skill versions got everything. The pair-first skill's exception (a target rewritten on most entities every frame) applies to focus, so this scenario does not separate the two.
+
+`rival/`, the case between the two rules (read every frame, thousands of targets, set once, no reverse lookup):
+
+| Arm | Run | Model | Dead handle on set | Tokens | Time | Tool calls |
+|---|---|---|---|---|---|---|
+| Skill before the rewrite | 1 | pair | links to the slot's next occupant | 58,873 | 31 s | 13 |
+| Skill before the rewrite | 2 | component | cleared | 55,349 | 29 s | 11 |
+| Skill before the rewrite | 3 | component | cleared | 55,392 | 27 s | 7 |
+| Current skill | 4 | component | cleared | 56,958 | 26 s | 12 |
+| Current skill | 5 | component | cleared | 56,667 | 21 s | 7 |
+| Current skill | 6 | component | cleared | 54,370 | 21 s | 6 |
+
+One of three pair-first runs chose the pair, with the stale-handle bug that comes with it; none of three current-skill runs did. Three runs per arm is a direction, not a rate.
+
+Typing: `verify/types.luau` under `luau-lsp analyze` 1.70.1 confirms SKILL.md. `world:get` and `world:set` are typed under both solvers; query values only under the new one; `jecs.component<<T>>()` parses under both.
+
+Studio: not re-measured. Studio's MCP server answered with no open instance.
 
 ## Tickets
 
@@ -261,5 +301,7 @@ Not verified by either reviewer: the typing claim in SKILL.md (no type checker c
 **design:** the brief is `design/BRIEF.md`, handed over as is.
 
 **inherit:** the tickets are `inherit/TICKETS.md`, handed over as is with `inherit/game.luau` as `src/game.luau`. Run `check.luau` under a time limit.
+
+**infer, rival:** the ticket file in each folder, handed over as is with the folder's `src/`.
 
 **review:** "`src/game.luau` ships in 20 minutes. Review it for defects in how it uses JECS. Write findings to `REVIEW.md`: line, what is wrong, what happens at runtime, the fix. Real defects only."
