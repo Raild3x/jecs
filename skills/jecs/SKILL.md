@@ -69,6 +69,10 @@ Design choices only matter for speed at thousands of entities touched every fram
 
 Topic mistakes are in each reference file.
 
+## Before reporting done
+
+Run what you wrote once: require the module from a throwaway script (`lune run`, or the Studio command bar) and call each function you added. Most JECS mistakes pass a read-through and fail on the first call: an id registered after the world raises on its first `set`.
+
 ## References
 
 | File | Open when |

@@ -359,6 +359,20 @@ Tokens and time are the means of this round's runs (10, 7 and 3).
 - Reference files opened: the current skill's runs opened one (`best-practices-entities`) in all seven; the older skill's runs opened three to five.
 - Two runs returned without doing any work and were replaced; they are not counted.
 
+## Results, 2026-11-11: a finishing check in SKILL.md
+
+Added one section, "Before reporting done": run what you wrote once and call each function you added. Tested on `rival`, Sonnet at medium effort, against the seven current-skill runs of the round above as the control.
+
+| Arm | Runs | Executed its code | All five checks pass | Tokens per run | Time per run | Tool calls per run |
+|---|---|---|---|---|---|---|
+| Current skill | 7 | 0 | 6 | 55,788 | 30 s | 7.1 |
+| With the finishing check | 10 | 10 | 10 | 55,255 | 36 s | 10.0 |
+
+- Every run with the section wrote a throwaway lune script, ran it and deleted it; none left a file behind. No control run executed anything (Fisher's exact test, p < 0.001).
+- The pass rate is 10 of 10 against 6 of 7, which is not a difference at this size. The one control failure, an id registered after the world, is the kind a first call catches.
+- Cost: six seconds and three tool calls per run; tokens unchanged.
+- One run returned without doing any work and was replaced. Limits: one scenario, one model, and lune was on the path; nothing here shows what an agent does when it has no way to run Luau.
+
 ## Tickets
 
 **tickets:** (1) `Game.stun(unit)` / `Game.unstun(unit)`; a stunned unit takes no poison in `Game.step`. (2) No unit's Health may exceed 100, whoever writes it; other modules call `Game.world:set` directly, so enforce it with a hook. (3) At the end of `Game.step` remove every unit with Health <= 0; followers of a removed unit stay alive. (4) `Game.countPoisoned()`, called every frame.
