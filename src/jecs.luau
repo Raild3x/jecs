@@ -1351,15 +1351,19 @@ local function query_archetypes(query: query, override: boolean?)
 end
 
 local function query_with(query: query, ...: i53)
-	local ids = query.ids
+	local filter_with = query.filter_with
 	local with = { ... }
-	table.move(ids, 1, #ids, #with + 1, with)
+	table.move(filter_with, 1, #filter_with, #with + 1, with)
 	query.filter_with = with
 	return query
 end
 
 local function query_without(query: query, ...: i53)
 	local without = { ... }
+	local filter_without = query.filter_without
+	if filter_without then
+		table.move(filter_without, 1, #filter_without, #without + 1, without)
+	end
 	query.filter_without = without
 	return query
 end

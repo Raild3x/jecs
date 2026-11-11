@@ -2899,6 +2899,72 @@ TEST("world:query()", function()
 		end
 		CHECK(counter == 0)
 	end
+
+	do CASE "chained :with should extend the previous filter"
+		local world = jecs.world()
+		local A = world:component()
+		local T1 = world:entity()
+		local T2 = world:entity()
+
+		local e1 = world:entity()
+		world:set(e1, A, 1)
+		world:add(e1, T1)
+		local e2 = world:entity()
+		world:set(e2, A, 2)
+		world:add(e2, T1)
+		world:add(e2, T2)
+		local e3 = world:entity()
+		world:set(e3, A, 3)
+		world:add(e3, T2)
+
+		local counter = 0
+		for e, a in world:query(A):with(T1):with(T2) :: any do
+			counter += 1
+			CHECK(e == e2)
+			CHECK(a == 2)
+		end
+		CHECK(counter == 1)
+
+		counter = 0
+		for e, a in world:query(A):with(T1):with(T2):cached() :: any do
+			counter += 1
+			CHECK(e == e2)
+			CHECK(a == 2)
+		end
+		CHECK(counter == 1)
+	end
+
+	do CASE "chained :without should extend the previous filter"
+		local world = jecs.world()
+		local A = world:component()
+		local T1 = world:entity()
+		local T2 = world:entity()
+
+		local e1 = world:entity()
+		world:set(e1, A, 1)
+		world:add(e1, T1)
+		local e2 = world:entity()
+		world:set(e2, A, 2)
+		world:add(e2, T2)
+		local e3 = world:entity()
+		world:set(e3, A, 3)
+
+		local counter = 0
+		for e, a in world:query(A):without(T1):without(T2) :: any do
+			counter += 1
+			CHECK(e == e3)
+			CHECK(a == 3)
+		end
+		CHECK(counter == 1)
+
+		counter = 0
+		for e, a in world:query(A):without(T1):without(T2):cached() :: any do
+			counter += 1
+			CHECK(e == e3)
+			CHECK(a == 3)
+		end
+		CHECK(counter == 1)
+	end
 end)
 
 TEST("world:remove()", function()
