@@ -1,6 +1,6 @@
 # Core basics
 
-Library behaviour stated in these files is asserted in [`../verify/`](../verify/) where a script can check it; cost figures and typing are not. Run it when a rule looks wrong.
+Library behaviour stated in these files is asserted by scripts in `test/skill/verify/` in the `raild3x/jecs` repository where a script can check it; cost figures and typing are not. Run it when a rule looks wrong.
 
 ## Setup
 

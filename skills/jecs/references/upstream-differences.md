@@ -49,4 +49,4 @@ A structural change wanted from a remove hook or listener has no queue to go to:
 
 ## Checking
 
-Copy the project's `jecs.luau` into [`../verify/`](../verify/) and run `lune run facts.luau` and `lune run examples.luau`. The scripts detect upstream and assert the upstream column above (147 and 28 assertions pass there; 170 and 31 on the fork).
+Copy the project's `jecs.luau` into `test/skill/verify/` in the `raild3x/jecs` repository and run `lune run facts.luau` and `lune run examples.luau`. The scripts detect upstream and assert the upstream column above.

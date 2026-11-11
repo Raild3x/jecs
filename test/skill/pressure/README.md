@@ -1,6 +1,6 @@
 # Pressure tests
 
-For whoever maintains the skill. Agents using the skill do not need this folder.
+For whoever maintains the skill in `skills/jecs/`. Kept outside the skill folder, with `../verify/`, so an agent using the skill cannot wander into the keys and hidden checks.
 
 ## Method
 

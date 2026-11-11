@@ -67,4 +67,4 @@ Ratios from lune and from Roblox Studio (JECS native). Two figures = the two env
 | Pair signals (lune) | 12-20 ns per pair listener per event on the relation |
 | `bulk_insert` vs `set` per component (lune) | slower at 3, equal at 6, 1.57x faster at 12 |
 
-The figures come from one-off benchmarks in lune and Studio. `lune run bench_ops.luau` and `lune run bench_links.luau` in [`../verify/`](../verify/) re-measure most rows in lune and print each beside the table's figure; an independent run put about half inside the ranges above and the rest within 2x. Treat them as orders of magnitude.
+The figures come from one-off benchmarks in lune and Studio. `lune run bench_ops.luau` and `lune run bench_links.luau` in `test/skill/verify/` in the `raild3x/jecs` repository re-measure most rows in lune and print each beside the table's figure; an independent run put about half inside the ranges above and the rest within 2x. Treat them as orders of magnitude.
