@@ -1782,6 +1782,70 @@ TEST("world:added", function()
 	end
 end)
 
+TEST("disconnecting signal listeners", function()
+	-- fires added, changed and removed once each
+	local function emit(world: World, A: Id<number>)
+		local e = world:entity()
+		world:set(e, A, 1)
+		world:set(e, A, 2)
+		world:remove(e, A)
+	end
+
+	for _, signal in { "added", "changed", "removed" } do
+		do CASE(`world:{signal} should invoke every listener when one disconnects itself during dispatch`)
+			local world = jecs.world()
+			local A = world:component() :: Id<number>
+			local connect = (world :: any)[signal]
+
+			local a, b, c = 0, 0, 0
+			local disconnect
+			disconnect = connect(world, A, function()
+				a += 1
+				disconnect()
+			end)
+			connect(world, A, function()
+				b += 1
+			end)
+			connect(world, A, function()
+				c += 1
+			end)
+
+			emit(world, A)
+			CHECK(a == 1)
+			CHECK(b == 1)
+			CHECK(c == 1)
+
+			emit(world, A)
+			CHECK(a == 1)
+			CHECK(b == 2)
+			CHECK(c == 2)
+		end
+
+		do CASE(`world:{signal} should keep the order of the remaining listeners after a disconnect`)
+			local world = jecs.world()
+			local A = world:component() :: Id<number>
+			local connect = (world :: any)[signal]
+
+			local order = {}
+			local disconnect = connect(world, A, function()
+				table.insert(order, 1)
+			end)
+			connect(world, A, function()
+				table.insert(order, 2)
+			end)
+			connect(world, A, function()
+				table.insert(order, 3)
+			end)
+
+			disconnect()
+			emit(world, A)
+			CHECK(#order == 2)
+			CHECK(order[1] == 2)
+			CHECK(order[2] == 3)
+		end
+	end
+end)
+
 -- FOCUS()
 TEST("world:range()", function()
 

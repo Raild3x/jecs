@@ -3157,8 +3157,15 @@ local function world_new(DEBUG: boolean?)
 			signals.added[component] = listeners
 
 			local function on_add(entity, id, value, oldarchetype)
-				for _, listener in listeners :: { Listener<T> } do
+				-- A listener can disconnect during dispatch, which shifts the ones after it
+				local i = 1
+				local listener = (listeners :: { any })[1]
+				while listener do
 					listener(entity, id, value, oldarchetype)
+					if (listeners :: { any })[i] == listener then
+						i += 1
+					end
+					listener = (listeners :: { any })[i]
 				end
 			end
 			local existing_hook = world_get(world, component, EcsOnAdd) :: Listener<T>
@@ -3182,11 +3189,9 @@ local function world_new(DEBUG: boolean?)
 		end
 		table.insert(listeners, fn)
 		return function()
-			local n = #listeners
 			local i = table.find(listeners, fn::Listener<any>)
 			assert(i, "Listener not found, maybe you tried to disconnect it twice")
-			listeners[i] = listeners[n]
-			listeners[n] = nil
+			table.remove(listeners :: { any }, i)
 		end
 	end
 
@@ -3200,8 +3205,15 @@ local function world_new(DEBUG: boolean?)
 			listeners = {}
 			signals.changed[component] = listeners
 			local function on_change(entity, id, value, oldarchetype)
-				for _, listener in listeners :: { Listener<T> }  do
+				-- A listener can disconnect during dispatch, which shifts the ones after it
+				local i = 1
+				local listener = (listeners :: { any })[1]
+				while listener do
 					listener(entity, id, value, oldarchetype)
+					if (listeners :: { any })[i] == listener then
+						i += 1
+					end
+					listener = (listeners :: { any })[i]
 				end
 			end
 			local existing_hook = world_get(world, component, EcsOnChange) :: Listener<T>?
@@ -3227,11 +3239,9 @@ local function world_new(DEBUG: boolean?)
 		end
 		table.insert(listeners, fn)
 		return function()
-			local n = #listeners
 			local i = table.find(listeners, fn::Listener<any>)
 			assert(i, "Listener not found, maybe you tried to disconnect it twice")
-			listeners[i] = listeners[n]
-			listeners[n] = nil
+			table.remove(listeners :: { any }, i)
 		end
 	end
 
@@ -3241,8 +3251,15 @@ local function world_new(DEBUG: boolean?)
 			listeners = {}
 			signals.removed[component] = listeners
 			local function on_remove(entity, id, delete)
-				for _, listener in listeners :: { (...any) -> () } do
+				-- A listener can disconnect during dispatch, which shifts the ones after it
+				local i = 1
+				local listener = (listeners :: { any })[1]
+				while listener do
 					listener(entity, id, delete)
+					if (listeners :: { any })[i] == listener then
+						i += 1
+					end
+					listener = (listeners :: { any })[i]
 				end
 			end
 
@@ -3271,11 +3288,9 @@ local function world_new(DEBUG: boolean?)
 		table.insert(listeners, fn::Listener<any>)
 
 		return function()
-			local n = #listeners
 			local i = table.find(listeners, fn::Listener<any>)
 			assert(i, "Listener not found, maybe you tried to disconnect it twice")
-			listeners[i] = listeners[n]
-			listeners[n] = nil
+			table.remove(listeners :: { any }, i)
 		end
 	end
 
