@@ -14,6 +14,7 @@
 - `world:delete` on a debug world (`jecs.world(true)`) now runs the debug checks. Previously only cascaded deletes were checked, so a structural change made inside an `OnRemove` hook while the entity was being deleted directly went unreported.
 - Chained `query:with(A):with(B)` and `query:without(A):without(B)` now extend the filter. Previously each call replaced the filter set by the one before it, so only the last call applied.
 - `world:added`, `world:changed` and `world:removed` now fire for plain uses of an id that had been used both as a component and as a relation before the first listener was connected. Previously only its pairs were wired up and the plain events were lost.
+- `query:iter()` on a stored uncached query now matches archetypes again on every call. Previously it restarted from the archetype list captured by the first iteration and missed archetypes created since.
 
 ## 0.8.0
 

@@ -1371,7 +1371,7 @@ end
 local function query_iter_init(query: QueryInner): () -> (number, ...any)
 	local world_query_iter_next
 
-	local compatible_archetypes_u = query_archetypes(query::any) :: { Archetype }
+	local compatible_archetypes_u = query_archetypes(query::any, true) :: { Archetype }
 	local last_archetype_u = 1
 	local archetype_u = compatible_archetypes_u[1]
 	if not archetype_u then

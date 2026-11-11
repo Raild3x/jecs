@@ -2489,6 +2489,28 @@ TEST("world:query()", function()
 		end
 		CHECK(counter == 2)
 	end
+	do CASE "iter on a stored uncached query should match archetypes created after the previous iter"
+		local world = jecs.world()
+		local A = world:component()
+		local B = world:component()
+		world:set(world:entity(), A, 1)
+		local q = world:query(A)
+		local counter = 0
+		for x in q:iter() do
+			counter += 1
+		end
+		CHECK(counter == 1)
+
+		local e = world:entity()
+		world:set(e, A, 2)
+		world:set(e, B, 2)
+
+		counter = 0
+		for x in q:iter() do
+			counter += 1
+		end
+		CHECK(counter == 2)
+	end
 	do CASE "tag"
 		local world = jecs.world()
 		local A = world:entity()
