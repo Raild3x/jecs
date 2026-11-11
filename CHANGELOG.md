@@ -19,6 +19,12 @@
 - A `world:added`, `world:changed` or `world:removed` listener that disconnects during dispatch no longer causes another listener to be skipped for that event, and disconnecting a listener no longer changes the order of the remaining ones.
 - A debug world no longer keeps rejecting every later change to an entity after a structural change inside its `OnRemove` hook aborted `world:delete`.
 - Repeating `query:with` or `query:without` with an id that is already in the filter no longer adds it again, so a stored query's filter does not grow.
+- `world:set`, `world:add` and `bulk_insert` on an entity whose last component had been removed now take it out of the root archetype. Previously a stale entry stayed behind, and deleting another empty entity then made `world:get` return a different entity's data and queries yield dead entities.
+- `world:delete` of a pair target no longer strips unrelated components from surviving entities. Pairs collected for removal from an archetype that turned out to be cascade deleted were carried over to the next archetype, where each one that was not found removed the archetype's last component instead.
+- `world:delete` of a component or relation with `(OnDelete, Delete)` now deletes every entity that has it. Previously the component record's archetypes were traversed once while the cascade could create new archetypes holding the id, and the entities in the ones the traversal skipped survived with the deleted id still attached.
+- Adding a pair of an exclusive relation (for example re-parenting with `ChildOf`) can no longer move an entity into a destroyed archetype. The archetype edge cached by an exclusive add had no way back, so `archetype_destroy` neither removed it when its destination was destroyed nor left the destination's own edges alone when its source was, and the stale edge was followed once the target's id was recycled. It could also make `archetype_destroy` error with `attempt to index nil with number`.
+- `bulk_insert` now writes the values before it calls `OnChange` when the entity does not change archetype, like `world:set` and a `bulk_insert` that moves the entity. Previously a hook that read the component back with `world:get` saw the old value.
+- `bulk_insert` now sets `false` values on an entity that has no components. Previously only truthy values were written there, so the component was added without a value, as if it were a tag.
 
 ## 0.8.0
 

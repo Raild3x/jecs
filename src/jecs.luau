@@ -1238,8 +1238,20 @@ local function archetype_destroy(world: world, archetype: archetype)
 	local component_index = world.component_index
 	local archetype_edges = world.archetype_edges
 	local edges = archetype_edges[archetype.id]
+	local types = archetype.types
 	for id, node in edges do
-		archetype_edges[node.id][id] = nil
+		local node_edges = archetype_edges[node.id]
+		if node_edges[id] == archetype then
+			node_edges[id] = nil
+		else
+			-- An edge of an exclusive add: `node` has `id` in place of another
+			-- pair of this archetype, and that pair is its way back.
+			local idr = component_index[id]
+			local replaced = if idr then types[idr.records[node.id]] else nil
+			if node_edges[replaced] == archetype then
+				node_edges[replaced] = nil
+			end
+		end
 		edges[id] = nil
 	end
 
@@ -2624,12 +2636,17 @@ local function ecs_bulk_insert(world: world, entity: i53, ids: { i53 }, values: 
 		table.sort(dst_types)
 
 		local to = archetype_ensure(world, dst_types)
-		new_entity(entity, r, to)
+		if r.row ~= 0 then
+			-- The entity lost its last component and has a row in the root archetype
+			entity_move(entity_index, entity, r, to)
+		else
+			new_entity(entity, r, to)
+		end
 		local ROOT_ARCHETYPE = world.ROOT_ARCHETYPE
 
 		for i, id in ids do
 			local value = values[i]
-			if value then
+			if value ~= nil then
 				r.archetype.columns_map[id][r.row] = value
 			end
 		end
@@ -2694,14 +2711,17 @@ local function ecs_bulk_insert(world: world, entity: i53, ids: { i53 }, values: 
 	else
 		for i, id in ids do
 			local value = values[i] :: any
-			local idr = component_index[id]
-			local on_change = idr.on_change
-			if on_change then
-				on_change(entity, id, value, from)
-			end
 
 			if value ~= nil then
 				r.archetype.columns_map[id][r.row] = value
+			end
+		end
+
+		for i, id in ids do
+			local idr = component_index[id]
+			local on_change = idr.on_change
+			if on_change then
+				on_change(entity, id, values[i], from)
 			end
 		end
 	end
@@ -2927,9 +2947,13 @@ local function world_new(DEBUG: boolean?)
 		local to = edge[id]
 		if not to then
 			local dst = table.clone(archetype.types)
+			local replaced = dst[cr]
 			dst[cr] = id
 			to = archetype_ensure(world, dst)
 			edge[id] = to
+			-- The way back replaces `id` with the pair that it replaced. It is
+			-- also what lets archetype_destroy find and remove this edge.
+			archetype_edges[to.id][replaced] = archetype
 		end
 		return to
 	end
@@ -3017,7 +3041,9 @@ local function world_new(DEBUG: boolean?)
 
 			local ROOT_ARCHETYPE = ROOT_ARCHETYPE
 			local src_is_root_archetype = src == ROOT_ARCHETYPE
-			if not src_is_root_archetype then
+			-- An entity that lost its last component has a row in the root
+			-- archetype and needs to be moved out of it as well.
+			if not src_is_root_archetype or record.row ~= 0 then
 				-- If there was a previous archetype, then the entity needs to move the archetype
 				inner_entity_move(entity, record, to)
 			else
@@ -3116,7 +3142,7 @@ local function world_new(DEBUG: boolean?)
 
 		local ROOT_ARCHETYPE = ROOT_ARCHETYPE
 		local src_is_root_archetype = src == ROOT_ARCHETYPE
-		if not src_is_root_archetype then
+		if not src_is_root_archetype or record.row ~= 0 then
 			inner_entity_move(entity, record, to)
 		else
 			if #to.types > 0 then
@@ -3565,16 +3591,24 @@ local function world_new(DEBUG: boolean?)
 		if idr then
 			local flags = idr.flags
 			if (bit32.btest(flags, ECS_ID_DELETE) == true) then
-				for archetype_id in idr.records do
-					local idr_archetype = archetypes[archetype_id]
+				-- NOTE: A cascaded delete can create archetypes with this id
+				-- while the records are being traversed, and a traversal can
+				-- skip keys that are inserted during it. So the records are
+				-- traversed again for as long as a pass has deleted an entity.
+				local alive_count
+				repeat
+					alive_count = entity_index.alive_count
+					for archetype_id in idr.records do
+						local idr_archetype = archetypes[archetype_id]
 
-					local entities = idr_archetype.entities
-					local n = #entities
-					for i = n, 1, -1 do
-						world_delete(world, entities[i])
+						local entities = idr_archetype.entities
+						local n = #entities
+						for i = n, 1, -1 do
+							world_delete(world, entities[i])
+						end
+						archetype_destroy(world, idr_archetype)
 					end
-					archetype_destroy(world, idr_archetype)
-				end
+				until entity_index.alive_count >= alive_count
 			else
 				local on_remove = idr.on_remove
 				if on_remove then
@@ -3649,6 +3683,9 @@ local function world_new(DEBUG: boolean?)
 						world_delete(world, entities[row])
 					end
 					archetype_destroy(world, idr_t_archetype)
+					-- Pairs collected before the delete policy was found must
+					-- not leak into the next archetype.
+					table.clear(to_remove)
 					continue
 				end
 				if remove_count == 1 then
@@ -3696,15 +3733,21 @@ local function world_new(DEBUG: boolean?)
 			local flags = idr_r.flags
 			local has_delete_policy = bit32.btest(flags, ECS_ID_DELETE)
 			if has_delete_policy then
-				for archetype_id in archetype_ids do
-					local idr_r_archetype = archetypes[archetype_id]
-					local entities = idr_r_archetype.entities
-					local n = #entities
-					for i = n, 1, -1 do
-						world_delete(world, entities[i])
+				-- NOTE: Traversed again for as long as a pass has deleted an
+				-- entity, for the same reason as the records of `idr` above.
+				local alive_count
+				repeat
+					alive_count = entity_index.alive_count
+					for archetype_id in archetype_ids do
+						local idr_r_archetype = archetypes[archetype_id]
+						local entities = idr_r_archetype.entities
+						local n = #entities
+						for i = n, 1, -1 do
+							world_delete(world, entities[i])
+						end
+						archetype_destroy(world, idr_r_archetype)
 					end
-					archetype_destroy(world, idr_r_archetype)
-				end
+				until entity_index.alive_count >= alive_count
 			else
 				local counts = idr_r.counts
 				local records = idr_r.records

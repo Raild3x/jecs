@@ -586,6 +586,54 @@ TEST("bulk", function()
 		CHECK(world:get(e, c2) == 2)
 		CHECK(world:get(e, c3) == 3)
 	end
+
+	do CASE "#331 OnChange should see the new values when bulk_insert does not move the entity"
+		local world = jecs.world()
+		local c1, c2, c3 = world:component(), world:component(), world:component()
+
+		local seen_c1, seen_c2
+		world:set(c1, jecs.OnChange, function(e, id, value)
+			seen_c1 = world:get(e, c1)
+			seen_c2 = world:get(e, c2)
+		end)
+
+		local e = world:entity()
+		world:set(e, c1, 1)
+		world:set(e, c2, "a")
+
+		-- No archetype move
+		jecs.bulk_insert(world, e, { c1, c2 }, { 2, "b" })
+		CHECK(seen_c1 == 2)
+		CHECK(seen_c2 == "b")
+		CHECK(world:get(e, c1) == 2)
+		CHECK(world:get(e, c2) == "b")
+
+		-- Same as when the batch moves the entity
+		jecs.bulk_insert(world, e, { c1, c2, c3 }, { 3, "c", true })
+		CHECK(seen_c1 == 3)
+		CHECK(seen_c2 == "c")
+
+		-- and as world:set
+		world:set(e, c1, 4)
+		CHECK(seen_c1 == 4)
+	end
+
+	do CASE "#343 false should be set as a value on an entity without components"
+		local world = jecs.world()
+		local c1, c2 = world:component(), world:component()
+
+		local e = world:entity()
+		jecs.bulk_insert(world, e, { c1, c2 }, { false, 1 })
+		CHECK(world:has(e, c1))
+		CHECK(world:get(e, c1) == false)
+		CHECK(world:get(e, c2) == 1)
+
+		-- Same as on an entity that already has components
+		local e2 = world:entity()
+		world:set(e2, c2, 1)
+		jecs.bulk_insert(world, e2, { c1 }, { false })
+		CHECK(world:get(e2, c1) == false)
+	end
 end)
 
 TEST("repro", function()
@@ -1604,6 +1652,292 @@ TEST("world:delete()", function()
 		reject = false
 		world:add(e, C)
 		CHECK(world:has(e, C))
+	end
+
+	do CASE "#320 re-adding to an entity that lost its last component should not corrupt rows when another empty entity is deleted"
+		local readd = {
+			function(world, e, A)
+				world:set(e, A, "e1-data")
+			end,
+			function(world, e, A)
+				world:add(e, A)
+				world:set(e, A, "e1-data")
+			end,
+			function(world, e, A)
+				jecs.bulk_insert(world, e, { A }, { "e1-data" })
+			end,
+		}
+
+		for _, fn in readd do
+			local world = jecs.world()
+			local A = world:component()
+
+			-- Removing the last component puts e2 and e1 in the root archetype
+			local e2 = world:entity()
+			world:set(e2, A, "e2-data")
+			world:remove(e2, A)
+
+			local e1 = world:entity()
+			world:set(e1, A, "e1-data")
+			world:remove(e1, A)
+
+			local e3 = world:entity()
+			world:set(e3, A, "e3-data")
+
+			fn(world, e1, A)
+
+			world:delete(e2)
+			CHECK(world:get(e1, A) == "e1-data")
+			CHECK(world:get(e3, A) == "e3-data")
+
+			world:delete(e1)
+			local count = 0
+			for e, v in world:query(A) do
+				count += 1
+				CHECK(e == e3 and v == "e3-data")
+			end
+			CHECK(count == 1)
+			CHECK(world:get(e3, A) == "e3-data")
+		end
+	end
+
+	do CASE "#321 deleting a target should not strip unrelated components after an archetype was cascade deleted"
+		local world = jecs.world()
+		local Comp = world:component()
+
+		local R_nd = world:entity()
+		local R_del = world:entity()
+		world:add(R_del, pair(jecs.OnDeleteTarget, jecs.Delete))
+		local R3 = world:entity()
+		local R4 = world:entity()
+
+		local T = world:entity()
+
+		-- Create the archetype of pair(R_nd, T) first so that it is not visited
+		-- between the two archetypes below
+		local warm = world:entity()
+		world:add(warm, pair(R_nd, T))
+		world:remove(warm, pair(R_nd, T))
+
+		local victim = world:entity()
+		world:set(victim, Comp, "important data")
+		world:add(victim, pair(R3, T))
+		world:add(victim, pair(R4, T))
+
+		-- Visited before the victim: pair(R_nd, T) is collected for removal
+		-- before pair(R_del, T) turns it into a delete
+		local leaker = world:entity()
+		world:add(leaker, pair(R_nd, T))
+		world:add(leaker, pair(R_del, T))
+
+		world:delete(T)
+
+		CHECK(not world:contains(leaker))
+		CHECK(world:contains(victim))
+		CHECK(world:has(victim, Comp))
+		CHECK(world:get(victim, Comp) == "important data")
+		CHECK(not world:has(victim, pair(R3, T)))
+		CHECK(not world:has(victim, pair(R4, T)))
+	end
+
+	-- The cascade strips pair(R, c) from every y, which creates archetypes
+	-- holding the deleted id while its records are being traversed
+	local function delete_policy_with_archetypes_created_by_cascade(as_relation: boolean)
+		local world = jecs.world()
+		local R = world:entity()
+		local t = world:entity()
+
+		local e = world:entity()
+		world:add(e, pair(jecs.OnDelete, jecs.Delete))
+		local id = if as_relation then pair(e, t) else e
+
+		-- Spreads the archetype ids out so the records are not a plain array
+		local function churn(n)
+			for _ = 1, n do
+				local tag = world:entity()
+				local d = world:entity()
+				world:add(d, tag)
+			end
+		end
+
+		local N = 50
+		local cs, ys = {}, {}
+
+		churn(7)
+		for i = 1, N do
+			local c = world:entity()
+			world:add(c, id)
+			cs[i] = c
+		end
+
+		for i = 1, N do
+			churn(23)
+			local F = world:entity()
+			local y = world:entity()
+			world:add(y, F)
+			world:add(y, pair(R, cs[i]))
+			world:add(y, id)
+			ys[i] = y
+		end
+
+		world:delete(e)
+
+		local survivors = 0
+		for i = 1, N do
+			if world:contains(cs[i]) then
+				survivors += 1
+			end
+			if world:contains(ys[i]) then
+				survivors += 1
+			end
+		end
+		return survivors
+	end
+
+	do CASE "#322 (OnDelete, Delete) on a component should delete entities in archetypes created by the cascade"
+		CHECK(delete_policy_with_archetypes_created_by_cascade(false) == 0)
+	end
+
+	do CASE "#322 (OnDelete, Delete) on a relation should delete entities in archetypes created by the cascade"
+		CHECK(delete_policy_with_archetypes_created_by_cascade(true) == 0)
+	end
+
+	do CASE "#323 exclusive re-parent to a recycled parent should not use the edge to a destroyed archetype"
+		local world = jecs.world()
+		local X = world:component()
+
+		local p1 = world:entity()
+		local p2 = world:entity()
+
+		local e = world:entity()
+		world:add(e, X)
+		world:add(e, pair(ChildOf, p1))
+
+		local e2 = world:entity()
+		world:add(e2, X)
+		world:add(e2, pair(ChildOf, p1))
+
+		-- Makes the edge from {X, ChildOf(p1)} to {X, ChildOf(p2)}
+		world:add(e, pair(ChildOf, p2))
+
+		-- Deletes e and destroys {X, ChildOf(p2)}
+		world:delete(p2)
+
+		local p2x
+		repeat
+			p2x = world:entity()
+		until ECS_ID(p2x) == ECS_ID(p2)
+
+		-- Same pair id as pair(ChildOf, p2)
+		world:add(e2, pair(ChildOf, p2x))
+
+		CHECK(world:has(e2, pair(ChildOf, p2x)))
+		CHECK(world:parent(e2) == p2x)
+		local seen = false
+		for ent in world:query(X) do
+			seen = seen or ent == e2
+		end
+		CHECK(seen)
+		local r = jecs.record(world, e2)
+		CHECK(world.archetypes[r.archetype.id] == r.archetype)
+	end
+
+	do CASE "#323 destroying the source of an exclusive edge should keep the edges of its destination"
+		local world = jecs.world()
+		local X = world:component()
+
+		local p1 = world:entity()
+		local p2 = world:entity()
+
+		local e = world:entity()
+		world:add(e, X)
+		world:add(e, pair(ChildOf, p1))
+
+		local e2 = world:entity()
+		world:add(e2, X)
+		world:add(e2, pair(ChildOf, p2))
+
+		-- Makes the edge from {X, ChildOf(p1)} to {X, ChildOf(p2)}
+		world:add(e, pair(ChildOf, p2))
+
+		local e3 = world:entity()
+		world:add(e3, X)
+		world:add(e3, pair(ChildOf, p1))
+
+		-- Destroys {X, ChildOf(p1)}, then {X, ChildOf(p2)}
+		world:delete(p1)
+		world:delete(p2)
+		CHECK(not world:contains(e))
+		CHECK(not world:contains(e2))
+		CHECK(not world:contains(e3))
+
+		local p2x
+		repeat
+			p2x = world:entity()
+		until ECS_ID(p2x) == ECS_ID(p2)
+
+		-- The edge from {X} to {X, ChildOf(p2)} must be gone as well
+		local e4 = world:entity()
+		world:add(e4, X)
+		world:add(e4, pair(ChildOf, p2x))
+
+		CHECK(world:parent(e4) == p2x)
+		local seen = false
+		for ent in world:query(X) do
+			seen = seen or ent == e4
+		end
+		CHECK(seen)
+		local r = jecs.record(world, e4)
+		CHECK(world.archetypes[r.archetype.id] == r.archetype)
+	end
+
+	do CASE "destroying both ends of an exclusive edge should not error"
+		local world = jecs.world()
+		local X = world:component()
+
+		local p1 = world:entity()
+		local p2 = world:entity()
+
+		local e = world:entity()
+		world:add(e, X)
+		world:add(e, pair(ChildOf, p1))
+
+		local e2 = world:entity()
+		world:add(e2, X)
+		world:add(e2, pair(ChildOf, p1))
+
+		-- Makes the edge from {X, ChildOf(p1)} to {X, ChildOf(p2)}
+		world:add(e, pair(ChildOf, p2))
+
+		-- Destroys {X, ChildOf(p2)}, then {X, ChildOf(p1)}
+		world:delete(p2)
+		world:delete(p1)
+
+		CHECK(not world:contains(e))
+		CHECK(not world:contains(e2))
+		CHECK(not world:contains(p1))
+	end
+
+	do CASE "#323 removing the pair of an exclusive re-parent should not bring back the previous pair"
+		local world = jecs.world()
+		local X = world:component()
+
+		local p1 = world:entity()
+		local p2 = world:entity()
+
+		local e = world:entity()
+		world:add(e, X)
+		world:add(e, pair(ChildOf, p1))
+		world:add(e, pair(ChildOf, p2))
+		world:remove(e, pair(ChildOf, p2))
+
+		CHECK(world:parent(e) == nil)
+		CHECK(world:has(e, X))
+
+		-- and the way back along the same edge
+		world:add(e, pair(ChildOf, p2))
+		world:add(e, pair(ChildOf, p1))
+		CHECK(world:parent(e) == p1)
 	end
 end)
 
