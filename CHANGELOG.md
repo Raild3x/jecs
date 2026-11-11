@@ -25,6 +25,7 @@
 - Adding a pair of an exclusive relation (for example re-parenting with `ChildOf`) can no longer move an entity into a destroyed archetype. The archetype edge cached by an exclusive add had no way back, so `archetype_destroy` neither removed it when its destination was destroyed nor left the destination's own edges alone when its source was, and the stale edge was followed once the target's id was recycled. It could also make `archetype_destroy` error with `attempt to index nil with number`.
 - `bulk_insert` now writes the values before it calls `OnChange` when the entity does not change archetype, like `world:set` and a `bulk_insert` that moves the entity. Previously a hook that read the component back with `world:get` saw the old value.
 - `bulk_insert` now sets `false` values on an entity that has no components. Previously only truthy values were written there, so the component was added without a value, as if it were a tag.
+- A cached query no longer keeps the id of a destroyed archetype in its `archetypes_map` when that archetype was the last one in the query's list. Previously the id was written back right after it was removed, so the map grew by one entry for every archetype that was created and reclaimed.
 
 ## 0.8.0
 

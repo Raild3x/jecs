@@ -4608,4 +4608,88 @@ TEST("archetype_destroy keeps wildcard record sizes in sync", function()
 	end
 end)
 
+TEST("cached query forgets destroyed archetypes", function()
+	local world = jecs.world()
+
+	local A = world:component()
+	local B = world:component()
+	local C = world:component()
+
+	local q = world:query(A):cached()
+
+	local function CHECK_MAP_MIRRORS_LIST()
+		local n = 0
+		for _ in q.archetypes_map do
+			n += 1
+		end
+		CHECK(n == #q.compatible_archetypes)
+		for i, archetype in q.compatible_archetypes do
+			CHECK(q.archetypes_map[archetype.id] == i)
+		end
+	end
+
+	local function CHECK_YIELDS(expected: { [jecs.Entity]: number })
+		local n = 0
+		for e, a in q:iter() do
+			n += 1
+			CHECK(expected[e] == a)
+		end
+		local expected_n = 0
+		for _ in expected do
+			expected_n += 1
+		end
+		CHECK(n == expected_n)
+	end
+
+	do CASE "archetypes_map does not retain the id of a destroyed archetype that was last in the list"
+		for i = 1, 100 do
+			local e = world:entity()
+			world:set(e, A, i) -- [A] is the only match, so it is also the last one
+			world:delete(e)
+			world:cleanup()
+		end
+		CHECK(#q.compatible_archetypes == 0)
+		CHECK(next(q.archetypes_map) == nil)
+		CHECK_YIELDS({})
+	end
+
+	local e_a = world:entity()
+	world:set(e_a, A, 1) -- [A]
+	local e_ab = world:entity()
+	world:set(e_ab, A, 2)
+	world:set(e_ab, B, 2) -- [A, B]
+	local e_ac = world:entity()
+	world:set(e_ac, A, 3)
+	world:set(e_ac, C, 3) -- [A, C]
+
+	do CASE "destroying an archetype in the middle of the list keeps the map in sync"
+		CHECK(#q.compatible_archetypes == 3)
+		world:delete(e_ab)
+		world:cleanup()
+		CHECK(#q.compatible_archetypes == 2)
+		CHECK_MAP_MIRRORS_LIST()
+		CHECK_YIELDS({ [e_a] = 1, [e_ac] = 3 })
+	end
+
+	do CASE "destroying the last archetype of several keeps the map in sync"
+		world:delete(e_ac)
+		world:cleanup()
+		CHECK(#q.compatible_archetypes == 1)
+		CHECK_MAP_MIRRORS_LIST()
+		CHECK_YIELDS({ [e_a] = 1 })
+	end
+
+	do CASE "query matches archetypes that are recreated after being destroyed"
+		e_ab = world:entity()
+		world:set(e_ab, A, 4)
+		world:set(e_ab, B, 4)
+		e_ac = world:entity()
+		world:set(e_ac, A, 5)
+		world:set(e_ac, C, 5)
+		CHECK(#q.compatible_archetypes == 3)
+		CHECK_MAP_MIRRORS_LIST()
+		CHECK_YIELDS({ [e_a] = 1, [e_ab] = 4, [e_ac] = 5 })
+	end
+end)
+
 return FINISH()

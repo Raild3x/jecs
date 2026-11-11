@@ -1983,8 +1983,10 @@ local function query_cached(query: QueryInner)
 		archetypes[i] = lastarchetype
 		archetypes[n] = nil
 
-		archetypes_map[archetypeid] = nil
+		-- Clear the destroyed id last: when it is the last archetype in the
+		-- list, both writes hit the same key and it must end up removed.
 		archetypes_map[lastarchetype.id] = i
+		archetypes_map[archetypeid] = nil
 	end
 
 	local observer_for_create = { query = query, callback = on_create_callback } :: Observer
