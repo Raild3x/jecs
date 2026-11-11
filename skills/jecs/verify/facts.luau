@@ -91,6 +91,7 @@ do
 	end) and raises(function()
 		w:get(e, ids[1], ids[2], ids[3], ids[4], ids[5])
 	end))
+	check("world:has with five ids returns false without raising when one of the first four is missing", w:has(e, ids[1], Tag, ids[3], ids[4], ids[5]) == false)
 	check("a query takes five terms", count(w:query(ids[1], ids[2], ids[3], ids[4], ids[5])) == 1)
 end
 do
@@ -143,10 +144,16 @@ end
 do
 	local w = jecs.world()
 	w:range(1000, 1002)
-	w:entity()
-	check("world:range is broken: the second entity inside the range raises", raises(function()
+	check("world:range(a, b) hands out a + 1 up to b - 1, then raises", jecs.ECS_ID(w:entity()) == 1001 and raises(function()
 		w:entity()
 	end))
+
+	local w2 = jecs.world()
+	local C = w2:component()
+	local live = w2:entity()
+	w2:set(live, C, "old")
+	local claimed = w2:entity(jecs.ECS_GENERATION_INC(live) :: any)
+	check("world:entity(id) can kill a live entity and hand its components to the new one", not w2:contains(live) and w2:get(claimed, C) == "old")
 end
 
 print("queries")
@@ -169,6 +176,9 @@ do
 	else
 		check("upstream: chained :with(T1):with(T2) keeps only the last call", count(w:query(A):with(T1):with(T2)) == 2)
 	end
+	local e4 = w:entity()
+	w:set(e4, A, 1)
+	check(":without(T1):without(T2) chained: both apply on the fork, only the last on upstream", count(w:query(A):without(T1):without(T2)) == (if FORK then 1 else 2))
 end
 do
 	local w = jecs.world()
@@ -225,6 +235,18 @@ do
 	check("a wildcard query yields one row per entity", count(w:query(pair(Likes, jecs.Wildcard))) == 1)
 	check("world:target is zero-based", w:target(e, Likes, 0) == a and w:target(e, Likes, 1) == b and w:target(e, Likes, 2) == nil)
 	check("world:targets iterates every target", count(w:targets(e, Likes)) == 2)
+	check("world:has accepts a wildcard pair on either side", w:has(e, pair(Likes, jecs.Wildcard)) and w:has(e, pair(jecs.Wildcard, a)))
+
+	local function archetypes(): number
+		local n = 0
+		for _ in (w :: any).archetypes do
+			n += 1
+		end
+		return n
+	end
+	local before = archetypes()
+	w:delete(a)
+	check("deleting a pair target destroys the archetypes that held the pair", archetypes() < before)
 end
 do
 	-- Deleting only the entity being visited skips live entities when it is a pair target.
@@ -289,6 +311,18 @@ do
 		w:remove(e, B)
 	end
 	check("a structural change to the visited entity makes the loop visit entities twice", visits > 10)
+
+	local Tag = w:entity()
+	local cq = w:query(A):cached()
+	visits = 0
+	for e in cq do
+		visits += 1
+		if visits > 100 then
+			break
+		end
+		w:add(e, Tag)
+	end
+	check("adding a tag to the visited entity of a cached query visits every entity twice", visits == 20)
 end
 
 print("pairs and traits")

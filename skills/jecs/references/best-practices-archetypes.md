@@ -11,7 +11,7 @@ Two consequences drive the design advice in the other best-practices files:
 - **Prefer changing a value over changing an entity's shape.**
 - **Every distinct pair is its own id**, so every distinct target of a relation creates new archetypes. This is fragmentation: it speeds up "everything that points at T" and slows down building, retargeting and deleting when targets are many.
 
-Archetypes are created on demand and stay when empty. `world:cleanup()` removes the empty ones.
+Archetypes are created on demand and stay when they empty out. Deleting a pair target destroys the archetypes that held its pairs, and `world:cleanup()` removes the other empty ones.
 
 ## Measured costs
 

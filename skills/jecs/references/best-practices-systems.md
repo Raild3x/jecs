@@ -6,7 +6,7 @@ A system is a function that runs one query and does one job. JECS has no schedul
 - **Put the condition in the query** with `:with` and `:without` where a tag exists for it, so the loop only visits what it will act on.
 - **Write values with `world:set`.** Writing a column directly skips hooks and signals: keep it for a measured hot loop over a component nothing observes.
 - **Keep state in components**, so a system can be removed, reordered or tested alone.
-- **Do not yield inside a system.** A yield lets other code change the world in the middle of a loop.
+- **Do not yield inside a system.** A yield lets other code change the world in the middle of a loop. Start slow work with `task.spawn` and feed its result back in as an event.
 - **Order by data flow:** systems that emit events, then systems that read them, then systems that mark, then the system that deletes, then the one that clears events.
 
 ## Changing structure from a loop

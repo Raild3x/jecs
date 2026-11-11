@@ -29,7 +29,7 @@ end
 
 ## Rules
 
-- **Give every filter id in one call**, `:with(A, B)`. On upstream a second `:with` replaces the first.
+- **Give every filter id in one call**, `:with(A, B)`, `:without(C, D)`. On upstream a second `:with` or `:without` replaces the first.
 - **Call `:cached()` once, at module scope**, for a query that runs every frame, after `:with` and `:without`. Each call registers two observers that stay until `:fini()`.
 - **Iterate an uncached query where it is built.** Stored in a variable it yields nothing the second time.
 - **Give a nested loop its own query.** Iterating a query inside its own loop ends the outer loop early.

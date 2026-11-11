@@ -13,6 +13,8 @@ JECS is an archetype entity-component-system for Luau. Most mistakes with it fai
 
 Written for the fork `raild3x/jecs`. Behaviour only the fork has is marked **fork**.
 
+Not covered: roblox-ts, replication between client and server, and the choice of scheduler.
+
 ## Before writing code
 
 1. **Read `wally.toml` for `raild3x/jecs` or `ukendio/jecs`.** On `ukendio/jecs` the fork features are absent: use the alternatives in [core-basics](references/core-basics.md).
@@ -24,7 +26,7 @@ Written for the fork `raild3x/jecs`. Behaviour only the fork has is marked **for
 
 | Need | Use | Why |
 |---|---|---|
-| Data on an entity | `jecs.component<<T>>()`, `world:set` | A typed column. |
+| Data on an entity | `jecs.component<<T>>()`, `world:set` | Queries read it as a typed column. |
 | A yes/no fact | `jecs.tag()`, `world:add` | `world:component()` always takes storage and one of 256 ids. |
 | One of several states | One value component | Switching an exclusive pair costs 4 to 38 times a `set`. |
 | A per-frame system picks a small share of thousands | Exclusive pair | The query visits only the matches. |
@@ -34,7 +36,7 @@ Written for the fork `raild3x/jecs`. Behaviour only the fork has is marked **for
 | An event handled this frame | A record in a plain array, cleared by the last system | A "pending" component keeps only the last event. |
 | A component's own invariant | A hook through `jecs.meta` | Hooks are read once, at first use. |
 | An outside observer, or a runtime toggle | `world:added`, `world:changed`, `world:removed` | Signals connect and disconnect at any time. |
-| A structural change from a loop, hook or listener | `world.deferred`, then `apply()` (**fork**); else collect, then apply | See the first mistakes below. |
+| A structural change from a loop, hook or listener | `world.deferred`, then `apply()` (**fork**); else collect, then apply | Changing structure mid-loop skips or repeats entities. |
 | Other systems must skip a doomed entity | A marker tag and `:without(Dead)` | A queued delete is invisible until applied. |
 
 A **structural change** is `add`, `remove`, `delete`, `clear`, or `set` of a component the entity lacks. `set` of a component it already has is not.
@@ -47,16 +49,16 @@ A **structural change** is `add`, `remove`, `delete`, `clear`, or `set` of a com
 | Structural change, or code that can raise, in a remove hook or listener | Undefined behaviour. A raise aborts half way: the value is stored, or the entity stays alive. | Queue it on `world.deferred`. Keep callbacks trivial. |
 | `jecs.component()`, `jecs.tag()` or `jecs.meta` after `jecs.world()` | The id collides with one the world handed out (**fork** raises), and `meta` never reaches that world. | Define and configure every id in one module, then create the world. |
 | `world:set(id, jecs.OnAdd, fn)` or a trait added at runtime | Ignored once the id is in use. Over signal listeners it silences them or is ignored. | `jecs.meta` at definition, or a signal. |
-| `:with(A):with(B)` | On upstream only the last call applies. | `:with(A, B)` |
+| `:with(A):with(B)`, `:without(A):without(B)` | On upstream only the last call applies. | `:with(A, B)`, `:without(A, B)` |
 | `:cached()` inside a function that runs repeatedly | Each call registers two observers that stay until `:fini()`. | Once, at module scope. |
 | An uncached query kept in a variable | It yields nothing the second time. | Iterate it where it is built, or cache it. |
 | A query iterated inside its own loop | The outer loop ends early. | A separate query for the inner loop. |
-| `world:component()` as a marker, `set` on a tag, `add` of a data component | A wasted column and id; a raise; a nil value. | `jecs.tag()`; `add` for tags, `set` for data. |
-| `world:has` or `world:get` with five ids | Raises. | Two calls. |
+| `world:component()` as a marker, `set` on a tag, `add` of a data component | A wasted column and one of 256 ids ("Too many components" past them); a raise; a nil value. | `jecs.tag()`; `add` for tags, `set` for data. |
+| `world:has` or `world:get` with five ids | `get` raises "args exceeded". `has` raises only when the first four are present, else returns false. | Two calls. |
 | `pair(R, handle)` from a stored handle | Links to the slot's new occupant, even in a debug world. | `world:contains(handle)` first. |
 | Writing through an unchecked handle, or checking with `world:exists` | A normal world ignores the write; `exists` stays true for a dead entity. | `world:contains`. Reads need no check. |
 | Treating `OnChange` as "the value differs" | It fires on an equal value, never for an in-place table mutation, and not for the first `set`. | [change tracking](references/best-practices-change-tracking.md) |
-| `world:entity(id)`, `world:range` | Can corrupt the entity index; `range` raises. | `world:entity()` |
+| `world:entity(id)` | Can kill a live entity and hand its components to the new id. | `world:entity()` |
 | Relying on iteration order | It differs between runs. | Sort the results. |
 | `jecs.bulk_insert` for small entities or exclusive pairs | Slower below six components; bypasses `Exclusive` and debug checks. | `set` and `add`; bulk only when measured. |
 | Many pair listeners on one relation (**fork**) | Every event on it runs each one. | One listener on the relation and a table lookup. |

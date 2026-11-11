@@ -8,7 +8,7 @@ Worlds, ids, entities and components, and how the fork differs from upstream. Be
 |---|---|---|
 | `world.deferred`, `jecs.deferred(world)` | present | absent: collect into a table and apply after the loop |
 | `world:added/changed/removed(pair(R, target), fn)` | fires for that pair only | returns a disconnect function and never fires for `added` |
-| `query:with(A):with(B)` | both apply | only the last call applies |
+| `query:with(A):with(B)`, `query:without(A):without(B)` | both apply | only the last call applies |
 | `jecs.component()` or `jecs.tag()` after a world exists | that world's `world:component()` raises; a debug world also raises from `add`, `set`, `remove` | silent: the id returned is one the world already handed out |
 | Hook or trait configured after the id's first use | debug world raises; normal world ignores it | ignored in both worlds |
 | Raw hook set on an id that has signal listeners | debug world raises | silent |
@@ -49,7 +49,7 @@ local Marker = world:entity()               -- an entity; used as an id it is a 
 | `world:set(e, id, value)` | Stores the value. Adds the component when missing (structural), else overwrites (not structural). Raises when `id` is a tag. |
 | `world:add(e, id)` | Adds a tag or a pair without a value. Does nothing when already present. On a data component it leaves the value nil. |
 | `world:get(e, a, b?, c?, d?)` | Values of up to four ids. Nil for a missing component, a tag and a dead entity. A fifth id raises. |
-| `world:has(e, a, b?, c?, d?)` | True when the entity has all of up to four ids. A fifth id raises: call it twice for more. |
+| `world:has(e, a, b?, c?, d?)` | True when the entity has all of up to four ids. With a fifth id it raises when the first four are present, and returns false otherwise: call it twice for more. Accepts `pair(R, jecs.Wildcard)` and `pair(jecs.Wildcard, T)`. |
 | `world:remove(e, id)` | Removes one id. |
 | `world:clear(e)` | Removes every component from `e`. `e` stays alive, and stays on the entities that have `e` as a tag or target. |
 | `world:delete(e)` | Deletes `e`, removes it wherever it is used as a tag or target, and applies cleanup traits. A dead handle is ignored, except that the **fork**'s debug world raises on it. |
@@ -64,4 +64,4 @@ An entity handle packs a slot index and a generation: `jecs.ECS_ID(e)`, `jecs.EC
 
 A normal world ignores `set`, `add`, `remove` and `delete` on a dead entity. A debug world raises on them. `get` and `has` on a dead entity return nil and false in both, so a read needs no check; check `world:contains` before a write and before building a pair.
 
-Create entities with `world:entity()` and no argument. `world:entity(id)` can corrupt the entity index, and `world:range` raises on the second entity created inside its own range.
+Create entities with `world:entity()` and no argument. `world:entity(id)` can corrupt the entity index: claiming the next generation of a live entity kills it and hands its components to the new id. `world:range(a, b)` hands out the ids from `a + 1` to `b - 1` and then raises.

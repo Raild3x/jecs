@@ -28,7 +28,7 @@ local function showHealth()
 end
 ```
 
-Several sets in one frame leave one entry. Connect `world:added` as well when the first value matters. The listener makes every `set` of that component about twice as dear.
+Several sets in one frame leave one entry. Connect `world:added` as well when the first value matters, and `world:removed` to record entities that lost the component. The listener makes every `set` of that component about twice as dear.
 
 ## Comparing against the value last handled
 
