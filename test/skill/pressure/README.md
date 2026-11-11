@@ -31,6 +31,7 @@ After the run, copy the scenario's `check.luau` to the project root and `lune ru
 | `inherit/` | fork | six tickets on an existing `game.luau`: targets, zones, a per-frame count, carried items, queued damage with thorns, speed | inferring the model from stated use; stale handles; late traits; event queues |
 | `infer/` | fork | four tickets with no rates: the caller modules show how each function is used | choosing component, value, pair or tag from usage in code; model detected by archetype counts |
 | `rival/` | fork | one link that merely points, is read every frame, and is set once | the case where the pair-first skill and the by-need skill disagree |
+| `slow/` | fork | speed up a step that caches a query per call, selects a state with an `if` and makes an entity per hit; write up what each change buys | finding the measured figures; model detected by archetypes and entity counts |
 
 Ticket wording for each scenario is in the "Tickets" section at the end.
 
@@ -373,6 +374,20 @@ Added one section, "Before reporting done": run what you wrote once and call eac
 - Cost: six seconds and three tool calls per run; tokens unchanged.
 - One run returned without doing any work and was replaced. Limits: one scenario, one model, and lune was on the path; nothing here shows what an agent does when it has no way to run Luau.
 
+## Results, 2026-11-11: a performance page
+
+The cost table moved out of `best-practices-archetypes.md` into a new `references/performance.md`, grouped by topic with the setup behind each figure; the rest of the old file became `core-archetypes.md`. Tested on the new `slow/` scenario, Sonnet at medium effort, six runs per arm. "Before" is the skill at `2fe0a54`.
+
+| Arm | Runs | All eight checks pass | Opened the file holding the cost table | NOTES.md gives the table's figures | Tokens per run | Time per run | Tool calls per run |
+|---|---|---|---|---|---|---|---|
+| Before | 6 | 6 | 6 (`best-practices-archetypes`) | 6 | 61,459 | 64 s | 11.7 |
+| After | 6 | 6 | 6 (`performance`) | 6 | 61,988 | 55 s | 10.5 |
+
+- No difference. Every run in both arms fixed all three defects, found the cost table and quoted its figures (3.7x and 9x for the debug world, about 100x for the filter at 1%, 6-12x for an entity per event). The move is safe; this scenario does not show it helps.
+- The earlier navigation runs opened the archetypes file in 0 of 32 runs because none of those tickets asked about speed. Given a speed ticket, agents found the table under the old name too.
+- `slow/check.luau` was validated first: the untouched file passes 5 of 8 (the three model and static checks fail) and a reference answer passes 8 of 8.
+- While rewriting the table both lune benchmarks were re-run. One figure was stale: the deferred queue now costs about 1.7x a hand-written collect-then-apply and 100-125 ns per queued change, against 1.0-1.6x and 45 ns before the queue gained its pair checks. Corrected in `performance.md` and `feature-deferred.md`.
+
 ## Tickets
 
 **tickets:** (1) `Game.stun(unit)` / `Game.unstun(unit)`; a stunned unit takes no poison in `Game.step`. (2) No unit's Health may exceed 100, whoever writes it; other modules call `Game.world:set` directly, so enforce it with a hook. (3) At the end of `Game.step` remove every unit with Health <= 0; followers of a removed unit stay alive. (4) `Game.countPoisoned()`, called every frame.
@@ -387,6 +402,6 @@ Added one section, "Before reporting done": run what you wrote once and call eac
 
 **inherit:** the tickets are `inherit/TICKETS.md`, handed over as is with `inherit/game.luau` as `src/game.luau`. Run `check.luau` under a time limit.
 
-**infer, rival:** the ticket file in each folder, handed over as is with the folder's `src/`.
+**infer, rival, slow:** the ticket file in each folder, handed over as is with the folder's `src/`.
 
 **review:** "`src/game.luau` ships in 20 minutes. Review it for defects in how it uses JECS. Write findings to `REVIEW.md`: line, what is wrong, what happens at runtime, the fix. Real defects only."

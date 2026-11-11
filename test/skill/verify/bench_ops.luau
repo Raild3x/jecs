@@ -1,4 +1,4 @@
--- Re-measures the cost table in references/best-practices-archetypes.md (writes, hooks, state switches, filters, the deferred queue, target reads, bulk_insert).
+-- Re-measures the cost table in references/performance.md (writes, hooks, state switches, filters, the deferred queue, target reads, bulk_insert).
 -- Copy the project's jecs.luau next to this file, then: lune run bench_ops.luau
 -- Not a pass/fail check: it prints each ratio beside the table's figure. Ratios
 -- move with the machine and the runtime; a figure off by more than about 2x,

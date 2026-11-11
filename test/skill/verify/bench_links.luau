@@ -1,4 +1,4 @@
--- Re-measures the cost table in references/best-practices-archetypes.md (links, fragmentation, containment, events, pair signals, despawn, empty archetypes).
+-- Re-measures the cost table in references/performance.md (links, fragmentation, containment, events, pair signals, despawn, empty archetypes).
 -- Copy the project's jecs.luau next to this file, then: lune run bench_links.luau
 -- Not a pass/fail check: it prints each ratio beside the table's figure. Ratios
 -- move with the machine and the runtime; a figure off by more than about 2x,

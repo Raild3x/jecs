@@ -38,7 +38,7 @@ local mine = jecs.deferred(world)      -- separate queue
 - An error reaches the caller; the failing change is dropped, the rest stay queued. A change can fail half done: a `set` on a tag raises after adding the tag.
 - Runs through the world's methods: debug checks apply.
 - Tables are captured by reference: a table mutated after queuing is stored as mutated.
-- Cost: about 45 ns to queue a change; 1.0-1.6x a hand-written collect-then-apply.
+- Cost: 100-125 ns to queue a change; about 1.7x a hand-written collect-then-apply ([performance](performance.md)).
 
 ## Patterns
 

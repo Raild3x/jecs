@@ -8,7 +8,7 @@ jecs.bulk_insert(world, world:entity(), { Speed, Armor, Stunned }, { 16, 5 })
 jecs.bulk_remove(world, entity, { Speed, Armor }) -- a wildcard pair raises
 ```
 
-One archetype move instead of one per component. Use only to spawn a fresh entity with about 8+ plain components and tags, when measured: it is slower than `set` at 3 components, equal at 6, 1.57x faster at 12, and it skips the checks below.
+One archetype move instead of one per component. Use only to spawn a fresh entity with about 8+ plain components and tags, when measured: it is slower than `set` at 3 components, equal at 6, 1.3-1.6x faster at 12 ([performance](performance.md)), and it skips the checks below.
 
 | Mistake | Result | Instead |
 |---|---|---|

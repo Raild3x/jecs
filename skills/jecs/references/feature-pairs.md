@@ -15,7 +15,7 @@
 | The holder merely points at the target and nothing asks the reverse | `Target`, `LastAttacker` | A pair buys nothing here and still fragments storage |
 | A loop reads the target for every row | Steering reads each NPC's target | `world:target` per row costs 6-15x reading a component column |
 | The link is retargeted often | Target re-picked twice a second | Retargeting a pair is a structural change: 4-10x a `set` depending on how many components the entity has, and tens of times more the first time an entity shape moves to a given target |
-| Targets times holder shapes would pass the hundreds | Thousands of distinct attackers | One archetype per target per holder shape: build cost is 3x at 1,000 targets, 10-19x at 10,000 |
+| Targets times holder shapes would pass the hundreds | Thousands of distinct attackers | One archetype per target per holder shape: build cost is 3x at 1,000 targets, 10-24x at 10,000 |
 
 An entity in a component is not cleaned up when its target dies: the reader checks `world:contains` ([best-practices-entities](best-practices-entities.md)). If both columns apply, the pair's benefit must be worth its cost: measure.
 

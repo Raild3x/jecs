@@ -53,7 +53,7 @@ Design choices only matter for speed at thousands of entities touched every fram
 | Write does nothing | Dead handle on a normal world | [core-basics](references/core-basics.md) |
 | Entity linked to the wrong target | `pair()` built from a stale handle | [feature-pairs](references/feature-pairs.md) |
 | Queued change never happens | `apply()` not called; the entity or a pair's target died before `apply`; it went to a different queue than the one applied | [feature-deferred](references/feature-deferred.md) |
-| Memory or frame time climbs | `:cached()` inside a system; pairs retargeted or built every frame across many targets | [best-practices-archetypes](references/best-practices-archetypes.md) |
+| Memory or frame time climbs | `:cached()` inside a system; pairs retargeted or built every frame across many targets | [core-archetypes](references/core-archetypes.md), [performance](references/performance.md) |
 
 ## Mistakes that cut across topics
 
@@ -79,6 +79,7 @@ Run what you wrote once: require the module from a throwaway script (`lune run`,
 |---|---|
 | [core-basics](references/core-basics.md) | World, ids, entities, components, handles |
 | [core-queries](references/core-queries.md) | Queries, filters, caching, counting, column loops |
+| [core-archetypes](references/core-archetypes.md) | How entities are stored; what a structural change is; fragmentation |
 | [feature-pairs](references/feature-pairs.md) | Relationships, targets, wildcards, hierarchy |
 | [feature-cleanup-traits](references/feature-cleanup-traits.md) | What deleting an id or target does to holders |
 | [feature-hooks](references/feature-hooks.md) | `OnAdd`, `OnChange`, `OnRemove` |
@@ -89,7 +90,7 @@ Run what you wrote once: require the module from a throwaway script (`lune run`,
 | [best-practices-queries](references/best-practices-queries.md) | Turning a question into a query; grouping |
 | [best-practices-systems](references/best-practices-systems.md) | Systems, structure changes, events |
 | [best-practices-change-tracking](references/best-practices-change-tracking.md) | Finding what changed |
-| [best-practices-archetypes](references/best-practices-archetypes.md) | Mental model, fragmentation, measured costs |
+| [performance](references/performance.md) | Measured cost of each choice and the setup behind it; when speed matters at all |
 | [advanced-api](references/advanced-api.md) | `bulk_insert`, >256 components, debug world |
 | [flecs](references/flecs.md) | Flecs named: what carries over, what is missing |
 | [upstream-differences](references/upstream-differences.md) | The project uses `ukendio/jecs` |

@@ -37,7 +37,7 @@ end
 
 Pair terms: `pair(R, t)` (yields the pair's value if it has one), `pair(R, jecs.Wildcard)` (any target; one row per entity), `pair(jecs.Wildcard, t)` (any relation to `t`).
 
-Put a term in `world:query(...)` when the loop reads its value, in `:with(...)` when it only has to be present. Speed is the same (measured 1.0x); the point is that the loop variables then name exactly what the system reads.
+Put a term in `world:query(...)` when the loop reads its value, in `:with(...)` when it only has to be present. Speed is the same (measured 1.0-1.2x); the point is that the loop variables then name exactly what the system reads.
 
 ## Patterns
 
