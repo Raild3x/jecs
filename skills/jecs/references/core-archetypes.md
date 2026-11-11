@@ -14,13 +14,13 @@ A columnar database:
 | Query | A scan over the matching tables |
 
 - Queries are fast because they read whole columns of matching archetypes and never look at the others.
-- **Structural change** (`add`, `remove`, `delete`, `clear`, `set` of a missing component) moves the entity to another archetype, reassigning one reference per column. Cost grows with component count.
+- A structural change moves the entity to another archetype, reassigning one reference per column, so its cost grows with the entity's component count.
 - `set` of an existing component moves nothing.
 - Archetypes stay when emptied. Deleting a pair target destroys the archetypes that held its pairs; `world:cleanup()` removes the other empty ones.
 
 ## Fragmentation
 
-Every distinct pair is its own id, so a relation creates one archetype per target for each shape of holder: 100 targets across holders of 4 shapes is 400 archetypes.
+Every distinct pair is its own id, so a relation creates one archetype per target for each shape of holder (the holder is the entity carrying the pair; its shape is the set of other ids it has): 100 targets across holders of 4 shapes is 400 archetypes.
 
 How many archetypes a query walks depends on the query, not on the total:
 
@@ -33,8 +33,8 @@ How many archetypes a query walks depends on the query, not on the total:
 So:
 
 - A relation whose queries name one target reads only that group, at any target count. That is the grouping benefit.
-- Walking many archetypes is cheap: a broad query over 10,000 entities spread across 1,000 archetypes ran 1.2x the time of the same entities in a few (1.0x at 100). Up to about 1,000 archetypes, fragmentation is not a reason to avoid a broad query; at 10,000 archetypes of one entity each it measured 2.4x cached and 3.6x uncached.
-- The cost is in creating archetypes and in moving entities between them: building is 3x dearer at 1,000 targets and 10-24x at 10,000, and every retarget is a structural change, dearest the first time a shape moves to a target. Keep targets times holder shapes in the hundreds.
-- Emptied archetypes stay in the world and in cached queries: 1,000 of them made a cached query 1.2x slower until `world:cleanup()`. Call it once shapes are gone for good (a level unloaded, a one-off mass delete), mainly to release the memory. It destroys every empty archetype, so the next entity of each shape rebuilds it: not on a timer, and not between waves that respawn the same shapes (a 200-shape respawn measured 3.9x slower after a cleanup each time).
+- Walking many archetypes is cheap up to about 1,000 of them. Fragmentation is not a reason to avoid a broad query until archetypes approach one per entity.
+- The cost is in creating archetypes and in moving entities between them, and every retarget is a structural change, dearest the first time a shape moves to a target. Keep targets times holder shapes in the hundreds.
+- Emptied archetypes stay in the world and in cached queries, at a small cost. `world:cleanup()` destroys them; cached queries stay correct. Call it once shapes are gone for good (a level unloaded, a one-off mass delete), mainly to release the memory. The next entity of each destroyed shape rebuilds its archetype, so not on a timer, and not between waves that respawn the same shapes. It is not needed after deleting pair targets, which destroys their archetypes already.
 
 Figures and the setups behind them: [performance](performance.md).

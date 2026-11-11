@@ -29,6 +29,8 @@ Scale, in lune: a `world:set` of an existing component takes about 40 ns, so 10,
 | Pair signal listeners on a relation (lune) | 100 listeners, each on a different `pair(R, target)`; cost falls on every add to `R` | 12-20 ns per listener per event: an add goes from 100 ns to 1,200 ns |
 | `world.deferred`, vs collecting into a table and applying by hand (lune) | add then remove a tag on 10,000 entities | about 1.7x; 100-125 ns per queued change |
 | `world.deferred:set`, vs a direct `set` of an existing component (lune) | 10,000 sets | 3.5x. The direct `set` is safe in a loop, so do not queue it |
+| An empty `world.deferred:apply()` (lune) | called after every system | about 15 ns |
+| Ids added one at a time, vs one `bulk_insert` (lune) | 5,000 entities with 2 components and 3 of 12 tags | 300 archetypes against 220: one extra for each partial combination |
 | `bulk_insert`, vs one `set` per component (lune) | spawning a new entity with 3 / 6 / 12 components | 1.5x slower / equal / 1.3-1.6x faster |
 
 ## State
@@ -57,6 +59,7 @@ The switch is a structural change: every column of the entity is moved, so the c
 | | in 1,000 archetypes | 1.2-1.5x |
 | | in 10,000 archetypes, one entity each | 2.4x cached, 3.6x uncached |
 | Cached query with emptied archetypes still in it (lune) | 1,000 empty archetypes | 1.1-1.2x until `world:cleanup()` |
+| Respawning after a `world:cleanup()`, vs with the archetypes kept (lune) | 200 entities in 200 shapes, every wave | 3.9x: each archetype is rebuilt |
 
 `:cached()` called inside a system is not in this table because it is not a speed choice: it installs two observers per call that stay until `:fini()`, so memory and every later archetype change get dearer each frame.
 
@@ -99,7 +102,8 @@ Which side holds the pair (lune), 100 owners with 30 items each, against an arra
 | An entity per event | same | 6.4-12x |
 | Marker tag then a cleanup query, vs collect-then-delete | despawning 10,000 entities | 1.2-2x |
 | `world.deferred:delete`, vs collect-then-delete (lune) | same | 1.3x |
-| Deleting inside the loop | same | no faster, and it skips entities |
+| Deleting inside the loop | same | no faster, and it skips entities when the deleted one is a pair target |
+| A `Dirty` tag added from a listener and removed after, vs a recording listener (lune) | 1,000 or 10,000 of 10,000 entities change | 3.3x, and a cached loop visits the moved entities twice |
 
 ## Re-measuring
 

@@ -6,6 +6,7 @@
 --!strict
 local jecs = require(path.to.jecs)
 local pair = jecs.pair
+local RunService = game:GetService("RunService")
 
 local Health = jecs.component<<number>>()   -- data
 local Dead = jecs.tag()                     -- tag
@@ -34,7 +35,7 @@ local world = jecs.world(RunService:IsStudio()) -- true = debug world
 | `world:delete(e)` | Deletes `e`, removes it as tag/target elsewhere, runs cleanup traits |
 | `world:contains(e)` | True only for a live handle |
 
-Singleton: `world:set(Time, Time, 12.5)`, `world:get(Time, Time)`. World-wide state (frame time, settings) stays in the world this way, where any system can read it, instead of in a module variable only one system sees.
+Singleton: `world:set(Time, Time, 12.5)`, `world:get(Time, Time)`. World-wide state (frame time, settings) lives in the world this way.
 
 ## Handles
 
@@ -49,16 +50,16 @@ Singleton: `world:set(Time, Time, 12.5)`, `world:get(Time, Time)`. World-wide st
 
 - `set`, `add`, `remove` on a dead entity
 - adding a dead entity as an id
-- removing a wildcard pair
+- a wildcard pair passed to `add`, `set` or `remove`
 - any `add`/`set`/`remove` on an entity from its own `OnRemove` while it is being deleted, direct or cascaded. The delete stops half way: the entity stays alive with its components, but the remove hooks of the ids before the failing one have already run, so a hook that releases a resource will run again on the next delete
 - `delete` of a dead handle
 - a hook or trait set after the id's first use
-- a raw hook on an id that has signal listeners
+- a raw hook (`world:set(id, jecs.OnAdd, fn)` instead of `jecs.meta`) on an id that has signal listeners
 - any `add`/`set`/`remove` after a late `jecs.component()` / `jecs.tag()`
 
 Run it in Studio and in tests: on a normal world all but the wildcard removal are silent. It costs about 3.7x on a component `set` ([performance](performance.md)), so not in production.
 
-Not checked: `bulk_insert`; `world:clear` on a dead handle; a pair built from a stale handle whose slot was reused; the `jecs.Component` trait added to an entity already in use (ignored).
+Not checked: `bulk_insert`; `world:clear` on a dead handle; a pair built from a stale handle whose slot was reused.
 
 ## Mistakes
 
@@ -69,6 +70,5 @@ Not checked: `bulk_insert`; `world:clear` on a dead handle; a pair built from a 
 | `world:add` of a data component, or `world:set(e, id, nil)` | `has` true, `get` nil | `world:set` with a value; `world:remove` to clear |
 | Fifth id to `get` / `has` | On a live entity `get` raises "args exceeded"; `has` raises only if the first four are present, else false | Two calls |
 | `world:exists` to validate | True for a dead handle | `world:contains` |
-| Write to a dead handle | Ignored (normal world), raises (debug) | `world:contains` first |
 | `world:entity(id)` | Can kill a live entity and give its components to the new id | `world:entity()` |
-| `world:range(a, b)` | Hands out ids above `a` (and above the current highest id) up to `b - 1`, then raises | Only to keep a client's own ids above the ids it mirrors from a server |
+| `world:range(a, b)` | Changes which ids the world hands out, then raises at `b` | Only for replication: [advanced-api](advanced-api.md) |

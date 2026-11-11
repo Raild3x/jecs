@@ -11,8 +11,10 @@ Not needed for `set` of a component the entity already has: that is not structur
 ## API
 
 ```luau
+local hurt = world:query(Health):cached() -- module scope
+
 local deferred = world.deferred        -- shared queue
-for entity, health in world:query(Health) do
+for entity, health in hurt do
 	if health <= 0 then
 		deferred:delete(entity)
 	end
@@ -46,7 +48,7 @@ Who calls `apply`:
 
 | Code | Does | Because |
 |---|---|---|
-| A system that queues | Applies right after its own loop | The next system sees the result |
+| A system that queues | Nothing when the frame's runner applies after every system; otherwise applies after its own loop, never inside it | The next system sees the result |
 | A hook or listener that queues | Nothing: the frame's runner applies after every system ([best-practices-systems](best-practices-systems.md)) | It cannot apply mid-operation |
 | A module called by code it does not control | Uses its own `jecs.deferred(world)` | Applying the shared queue would run other code's changes at an unexpected time |
 

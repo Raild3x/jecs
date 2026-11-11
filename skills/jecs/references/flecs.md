@@ -25,15 +25,6 @@ JECS borrows its model from Flecs: archetypes, pairs, wildcards, cleanup traits,
 | Stage and merge | `world.deferred` and `world.deferred:apply()`, queued by hand |
 | Entity name | `jecs.Name`, a plain string with no lookup |
 
-Flecs design advice that holds in JECS:
-
-- Keep components small and split by what systems read together.
-- Give a system one responsibility.
-- Create cached queries ahead of time, never inside a system.
-- Check a stored entity handle is alive before using it.
-- Reach for a relationship when the holder belongs to the target, or the reverse lookup or the grouping is needed. Keep an entity in a component for a link that merely points. Keep targets times holder shapes in the hundreds ([feature-pairs](feature-pairs.md)).
-- Group ids and systems by feature, with the ids of a feature importable apart from its systems.
-
 ## What JECS lacks
 
 Each of these is a Flecs feature with no JECS equivalent. When a Flecs pattern depends on one, use the substitute.

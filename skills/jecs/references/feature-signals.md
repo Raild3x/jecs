@@ -6,9 +6,11 @@ Any number of listeners on an id, connected and disconnected at any time.
 
 | Use | For | Because |
 |---|---|---|
-| Hook (`jecs.meta`) | The component's own invariant | One fixed slot, cheapest (1.3-1.9x a plain `set`) |
+| Hook (`jecs.meta`) | The component's own invariant | One fixed slot; runs for every writer |
 | Signal | Outside observers: debug, UI, change tracking, runtime toggles | Works on an id already in use; can be disconnected. One listener makes `set` about 2x, three 2.5x |
 | System | Gameplay logic | Runs at a known point in the frame, free to change structure |
+
+The first listener on an id installs a dispatcher as that id's hook and moves any existing hook into its listener list. That is why a hook runs before the listeners, why a raw hook set afterwards silences them, and why the dispatcher stays after the last disconnect.
 
 A listener runs inside the write that triggered it. Keep it to recording what happened; let a system act on the record.
 

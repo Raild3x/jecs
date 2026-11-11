@@ -18,12 +18,16 @@ One archetype move instead of one per component, and no archetype for each parti
 
 ## More than 256 data components
 
+`jecs.component()` and `world:component()` raise "Too many components" past 256. Beyond that, make an entity a component:
+
 ```luau
 local Dynamic = world:entity() :: jecs.Entity<number>
 world:add(Dynamic, jecs.Component)
 world:set(entity, Dynamic, 42)
 ```
 
-## world:cleanup
+Add `jecs.Component` before the entity is used for anything else: added later it is ignored, and the debug world does not catch it.
 
-Removes empty archetypes; cached queries stay correct. The next entity of each removed shape rebuilds its archetype, so not on a recurring cycle. When to call it: [core-archetypes](core-archetypes.md).
+## world:range
+
+`world:range(a, b)` makes the world hand out ids above `a` (and above its current highest id) up to `b - 1`, then raise. Its use is replication: a client that mirrors server entities at the same ids with `world:entity(serverId)` calls `world:range(N)`, with N above any id the server will reach, so its own entities never land in the server's id space. A client that maps server ids to its own through a table needs no range. Leave it alone otherwise.

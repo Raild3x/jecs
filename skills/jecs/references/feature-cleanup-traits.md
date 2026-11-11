@@ -21,7 +21,7 @@ jecs.meta(Temporary, pair(jecs.OnDelete, jecs.Delete))
 |---|---|
 | `pair(jecs.OnDeleteTarget, jecs.Delete)` on a relation | Deleting a target deletes every holder of a pair to it |
 | `pair(jecs.OnDelete, jecs.Delete)` on an id | Deleting the id deletes every entity that has it |
-| none | Deleting an id or target removes it from holders; they survive |
+| none (the same as `pair(jecs.OnDeleteTarget, jecs.Remove)`) | Deleting an id or target removes it from holders; they survive |
 | `pair(jecs.OnDelete, jecs.Delete)` on a relation | Also deletes holders when a target of the relation is deleted |
 | Deleting a relation that has `(OnDeleteTarget, Delete)` | Deletes every holder of its pairs |
 | `jecs.ChildOf` | Built in: exclusive + `(OnDeleteTarget, Delete)` |

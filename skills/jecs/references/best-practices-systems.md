@@ -8,33 +8,19 @@ Work done once, on demand, for an entity the caller already holds (`spawnNpc`, `
 
 | Rule | Because |
 |---|---|
-| Every query a system runs each frame is `:cached()`, created once at module scope, including the ones in code you are extending | An uncached query matches archetypes again on every call: no measurable cost with one archetype, 1.3x at 1,000, and 2.6-4x when few entities are spread over many. `:cached()` in the body is worse than either: it installs new observers on every call |
+| Every query a system runs each frame is `:cached()`, created once at module scope, including the ones in code you are extending | An uncached query matches archetypes again on every call (up to 4x). `:cached()` in the body is worse: it installs new observers on every call |
 | Conditions go in the query (`:with`, `:without`), not an `if` | The query skips whole archetypes; the `if` visits every row |
 | One job per system | It can be removed, reordered, profiled and tested alone |
-| State another system must see lives in components or a singleton, not in a module variable | Any system can read the world; only one module can read its own locals |
+| Lasting state another system must see lives in components or a singleton, not in a module variable. An event array is the exception | Any system can read the world; only one module can read its own locals. An event array is drained every frame, so nothing reads it stale |
 | Write with `world:set` | Direct column writes skip hooks and signals |
-| No yielding | Other code changes the world mid-loop. `task.spawn` slow work, mark the entity (`ComputingPath`) so it is not started twice, and feed the result back with a check that the entity is still alive |
+| No yielding | Other code changes the world mid-loop. `task.spawn` the slow work and queue a marker (`ComputingPath`) on `world.deferred` so it is not started twice. The thread pushes its result into an event array; the system that drains it checks the entity is still alive |
 | One function runs the frame and calls every system in a fixed order (below) | A reader placed before its writer acts on last frame's data |
 
 ## Structural changes
 
 Never inside a loop over a query, `world:each` or `world:children`. Deleting the visited entity skips live entities when it is a pair target; adding to it can visit it twice. `set` of an existing component is safe.
 
-Queue, then apply:
-
-```luau
-local doomed = world:query(Dead):cached()
-
-local function despawnDead()
-	local deferred = world.deferred
-	for entity in doomed do
-		deferred:delete(entity)
-	end
-	deferred:apply()
-end
-```
-
-From a remove hook or listener, queue as well; the frame's runner applies it (below).
+Queue the change on `world.deferred` instead ([feature-deferred](feature-deferred.md)); the frame's runner applies it (below). An `OnRemove` hook or `removed` listener queues as well:
 
 ```luau
 world:removed(Shield, function(entity, _, deleted)
@@ -119,10 +105,8 @@ Several systems that read the same events: the first consumer swaps and stores t
 
 | Mistake | Result | Instead |
 |---|---|---|
-| Structural change in the loop | Skipped or repeated entities | Queue on `world.deferred` |
-| `:cached()` inside the system | Two observers leaked per call | Module scope |
 | "Pending" component for events | A second event in the frame overwrites the first | Array |
-| An entity per event | 6-9x the direct change, and events emitted during the pass can be deleted unseen | Array |
+| An entity per event | 6-12x the direct change, and events emitted during the pass can be deleted unseen | Array |
 | Draining with `while i <= #hits` | Events that emit events can loop without end in one frame | Swap, then drain the batch |
 | Manual delete of a collected entity a cascade already removed | Debug world raises | `world.deferred`, or `world:contains` |
 | Yielding mid-system | World changes under the loop | `task.spawn` + event |

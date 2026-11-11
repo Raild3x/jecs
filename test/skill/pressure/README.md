@@ -422,6 +422,36 @@ Corrections to the skill that came from the verification, each with its script i
 
 Not taken from the original skills: an entity per event, a dirty tag set from a hook, syncing instances from a hook, always preferring `bulk_insert`, children's remove hooks running first, and empty archetypes costing nothing all tested false on this fork. A system-count rule of thumb was judged too weak to teach.
 
+## Results, 2026-11-11: an outside review of the skill
+
+An Opus agent read all 18 files with no account of earlier decisions, checked library claims against `src/jecs.luau`, and wrote a critique: placement of each section, coverage of the original skills' headings, and the writing as instructions. All but one of its changes were applied.
+
+Errors it found, now fixed:
+
+- The previous-value pattern never removed `pair(Previous, X)`, so its removal query returned the same entity every frame.
+- The no-yielding rule told the reader to mark the entity inside the loop, a structural change the same file forbids.
+- Eight figures disagreed with `performance.md` or were missing from it.
+- The debug-world list named only wildcard removal; `add` and `set` with a wildcard pair raise as well.
+- `performance.md` said deleting inside a loop skips entities; that holds only when the deleted entity is a pair target.
+- Two reasons did not support their rule: "a hook is cheapest" (the measured ranges overlap) and "idle entities are rows every system must skip" (queries skip archetypes).
+- The rule against shared state in module variables contradicted the event-array pattern beside it; event arrays are now the stated exception.
+
+Structure: text that only repeated SKILL.md was cut from the reference files; the pair-or-component decision table is kept in `feature-pairs.md` alone; the components-module example went (it repeated `core-basics.md`); figures moved from `core-archetypes.md` to `performance.md`; `world:range` and the `jecs.Component` caveat moved to `advanced-api.md`; SKILL.md's quick reference gained links, a symptom row for cleanup traits, and who calls `apply`.
+
+Not applied: merging `feature-hooks.md` and `feature-signals.md`. The mechanism the reviewer wanted stated (the first listener installs a dispatcher as the id's hook) was added to `feature-signals.md` instead.
+
+Regression on the result, Sonnet at medium effort, graded by the hidden checks:
+
+| Scenario | Runs | Checks | Tokens per run |
+|---|---|---|---|
+| rival | 3 | 5 of 5 each | 55,555 |
+| inherit | 2 | 23 of 23 each | 72,681 |
+| infer | 2 | 15 of 15 each | 62,510 |
+| slow | 2 | 8 of 8 each | 61,790 |
+| The release task (no hidden check; code read) | 3 | 0 changed the world in the hook; 3 queued | 63,553 |
+
+On the release task one run exported a `flush` and two left the apply to the game's step and said so; before this change five of five exported one. Both are correct.
+
 ## Tickets
 
 **tickets:** (1) `Game.stun(unit)` / `Game.unstun(unit)`; a stunned unit takes no poison in `Game.step`. (2) No unit's Health may exceed 100, whoever writes it; other modules call `Game.world:set` directly, so enforce it with a hook. (3) At the end of `Game.step` remove every unit with Health <= 0; followers of a removed unit stay alive. (4) `Game.countPoisoned()`, called every frame.

@@ -32,30 +32,9 @@ Start from the systems: list what each one reads and writes. Component boundarie
 
 A state that is both selected on and switched often: measure both. The pair wins when few entities match the query; the value wins when most entities switch every frame.
 
-## Components module
+## Modules
 
-Ids, then config, then the world. Hooks and traits are read when an id is first used; set later they apply to some uses and not others.
-
-```luau
---!strict
-local jecs = require(path.to.jecs)
-local pair = jecs.pair
-
-local Health = jecs.component<<number>>()
-local Model = jecs.component<<Model>>()
-local Dead = jecs.tag()
-local OwnedBy = jecs.tag()
-local Team = jecs.tag()
-local Red, Blue = jecs.tag(), jecs.tag()
-
-jecs.meta(Health, jecs.Name, "Health")
-jecs.meta(OwnedBy, pair(jecs.OnDeleteTarget, jecs.Delete))
-jecs.meta(Team, jecs.Exclusive)
-
-local world = jecs.world(RunService:IsStudio())
-```
-
-With ids and world in separate modules, the world module requires the ids module first.
+Ids and their config in one module, then the world ([core-basics](core-basics.md)). With ids and world in separate modules, the world module requires the ids module first. Group ids and systems by feature, with the ids of a feature importable apart from its systems.
 
 ## Mistakes
 
@@ -65,4 +44,3 @@ With ids and world in separate modules, the world module requires the ids module
 | One component per primitive field | Queries of five terms for one concept | Combine what travels together |
 | A tag per state (`Idle`, `Walking`) | Two structural changes per switch; invalid combinations possible | Value component, or exclusive pair if selected on |
 | Entity in a component for something that belongs to it | No reverse lookup, no cleanup | Pair |
-| `world:component()` for a marker | A column and one of 256 ids | `jecs.tag()` |

@@ -88,7 +88,7 @@ end
 | Mistake | Result | Instead |
 |---|---|---|
 | `world:set(id, jecs.OnAdd, fn)` after the id is in use | Debug world raises. Normal world: applied unevenly: nothing fires for the id or for pairs already in use; for pairs to new targets `OnChange` and `OnRemove` fire but `OnAdd` never does; all of it is picked up once the id's archetypes are gone (targets deleted, or `world:cleanup()` with no holder left) | `jecs.meta` before the world, or `world:set` before first use |
-| Raw hook on an id that has signal listeners | Debug world raises; otherwise silences them, or is ignored | `jecs.meta`, or another signal |
+| Raw hook (`world:set(id, jecs.OnAdd, fn)`) on an id that has signal listeners | Debug world raises; otherwise silences them, or is ignored | `jecs.meta`, or another signal |
 | Only `OnChange` installed | First `set` is missed | Both `OnAdd` and `OnChange` |
 | Structural change in `OnRemove` | Undefined behaviour | Queue on `world.deferred` |
 | A hook that raises | Operation aborts: value already stored, or entity left alive | Keep hooks trivial |

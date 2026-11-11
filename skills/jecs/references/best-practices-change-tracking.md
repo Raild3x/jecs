@@ -61,13 +61,13 @@ local function showHealth()
 end
 ```
 
-Removal shows up as `world:query(pair(Previous, Health)):without(Health)`.
+Removal shows up as `world:query(pair(Previous, Health)):without(Health)`. Handle it, then queue `deferred:remove(entity, pair(Previous, Health))`: until that pair is gone the same entity shows up every frame.
 
 ## Mistakes
 
 | Mistake | Result | Instead |
 |---|---|---|
-| "Dirty" tag added from a hook or listener and removed after | The add moves the entity in the middle of the writer's loop, so a cached loop visits it twice; and 3.3x the cost of a recording table | Recording table |
+| "Dirty" tag added from a hook or listener and removed after | The add moves the entity in the middle of the writer's loop, so a cached loop visits it twice; and 3.3x the cost of a recording listener | Recording listener |
 | Mutating a table value and expecting `changed` | Nothing fires | `world:set` again, or comparison |
 | Only `changed` connected | First value missed | Also `added` |
 | Acting inside the listener | Runs mid-write, once per `set` even when several happen in a frame | Record, act in a system |
