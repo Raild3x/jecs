@@ -1868,6 +1868,33 @@ TEST("world:delete()", function()
 		CHECK(world.archetypes[r.archetype.id] == r.archetype)
 	end
 
+	do CASE "destroying both ends of an exclusive edge should not error"
+		local world = jecs.world()
+		local X = world:component()
+
+		local p1 = world:entity()
+		local p2 = world:entity()
+
+		local e = world:entity()
+		world:add(e, X)
+		world:add(e, pair(ChildOf, p1))
+
+		local e2 = world:entity()
+		world:add(e2, X)
+		world:add(e2, pair(ChildOf, p1))
+
+		-- Makes the edge from {X, ChildOf(p1)} to {X, ChildOf(p2)}
+		world:add(e, pair(ChildOf, p2))
+
+		-- Destroys {X, ChildOf(p2)}, then {X, ChildOf(p1)}
+		world:delete(p2)
+		world:delete(p1)
+
+		CHECK(not world:contains(e))
+		CHECK(not world:contains(e2))
+		CHECK(not world:contains(p1))
+	end
+
 	do CASE "#323 removing the pair of an exclusive re-parent should not bring back the previous pair"
 		local world = jecs.world()
 		local X = world:component()
